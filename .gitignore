@@ -1,3 +1,6 @@
 /Time-LLM/checkpoints/
-./idea/
-./Time-LLM/dataset/
+.idea/
+/Time-LLM/dataset/
+/Time-LLM/slurm-*
+/CALF/slurm-*
+/CALF/checkpoints/
