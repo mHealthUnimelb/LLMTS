@@ -1,0 +1,294 @@
+Args in experiment:
+[1mBasic Config[0m
+  Task Name:          classification      Is Training:        1                   
+  Model ID:           ECG_CALF_96_720     Model:              CALF                
+
+[1mData Loader[0m
+  Data:               ECG                 Root Path:          ./datasets/ECG/     
+  Data Path:          x_train.pkl         Features:           M                   
+  Target:             OT                  Freq:               h                   
+  Checkpoints:        ./checkpoints/      
+
+[1mModel Parameters[0m
+  Top k:              5                   Num Kernels:        6                   
+  Enc In:             7                   Dec In:             7                   
+  C Out:              7                   d model:            768                 
+  n heads:            4                   e layers:           2                   
+  d layers:           1                   d FF:               768                 
+  Moving Avg:         25                  Factor:             1                   
+  Distil:             1                   Dropout:            0.3                 
+  Embed:              timeF               Activation:         gelu                
+  Output Attention:   0                   
+
+[1mRun Parameters[0m
+  Num Workers:        10                  Itr:                1                   
+  Train Epochs:       100                 Batch Size:         256                 
+  Patience:           10                  Learning Rate:      0.0005              
+  Des:                test                Feature Loss:       l1                  Output Loss:        l1                  Task Loss:          ce                  
+  Lradj:              type1               Use Amp:            0                   
+
+[1mGPU[0m
+  Use GPU:            1                   GPU:                0                   
+  Use Multi GPU:      0                   Devices:            0,1,2,3             
+
+[1mDe-stationary Projector Params[0m
+  P Hidden Dims:      128, 128            P Hidden Layers:    2                   
+
+[1mDistill Loss Weight[0m
+  Feature Weight:     0.01                Output Weight:      1.0                 Task Weight:        1.0                 
+
+Use GPU: cuda:0
+>>>>>>>start training : classification_ECG_CALF_96_720_CALF_ECG_ftM_sl1_ll0_pl0_dm768_nh4_el2_dl1_df768_fc1_ebtimeF_dtTrue_test_gpt6_0>>>>>>>>>>>>>>>>>>>>>>>>>>
+Traceback (most recent call last):
+  File "/data/gpfs/projects/punim2341/feixiangz/CALF/run.py", line 178, in <module>
+    exp.train(setting)
+  File "/data/gpfs/projects/punim2341/feixiangz/CALF/exp/exp_classification.py", line 120, in train
+    for i, (batch_x, label, padding_mask) in enumerate(train_loader):
+  File "/data/gpfs/projects/punim2341/anaconda3/envs/calf/lib/python3.9/site-packages/torch/utils/data/dataloader.py", line 630, in __next__
+    data = self._next_data()
+  File "/data/gpfs/projects/punim2341/anaconda3/envs/calf/lib/python3.9/site-packages/torch/utils/data/dataloader.py", line 1344, in _next_data
+    return self._process_data(data)
+  File "/data/gpfs/projects/punim2341/anaconda3/envs/calf/lib/python3.9/site-packages/torch/utils/data/dataloader.py", line 1370, in _process_data
+    data.reraise()
+  File "/data/gpfs/projects/punim2341/anaconda3/envs/calf/lib/python3.9/site-packages/torch/_utils.py", line 706, in reraise
+    raise exception
+TypeError: Caught TypeError in DataLoader worker process 0.
+Original Traceback (most recent call last):
+  File "/data/gpfs/projects/punim2341/anaconda3/envs/calf/lib/python3.9/site-packages/torch/utils/data/_utils/worker.py", line 309, in _worker_loop
+    data = fetcher.fetch(index)  # type: ignore[possibly-undefined]
+  File "/data/gpfs/projects/punim2341/anaconda3/envs/calf/lib/python3.9/site-packages/torch/utils/data/_utils/fetch.py", line 52, in fetch
+    data = [self.dataset[idx] for idx in possibly_batched_index]
+  File "/data/gpfs/projects/punim2341/anaconda3/envs/calf/lib/python3.9/site-packages/torch/utils/data/_utils/fetch.py", line 52, in <listcomp>
+    data = [self.dataset[idx] for idx in possibly_batched_index]
+TypeError: __getitem__() takes 1 positional argument but 2 were given
+
+=====================================================================================================================
+Args in experiment:
+[1mBasic Config[0m
+  Task Name:          classification      Is Training:        1                   
+  Model ID:           ECG_CALF_96_720     Model:              CALF                
+
+[1mData Loader[0m
+  Data:               ECG                 Root Path:          ./datasets/ECG/     
+  Data Path:          x_train.pkl         Features:           M                   
+  Target:             OT                  Freq:               h                   
+  Checkpoints:        ./checkpoints/      
+
+[1mModel Parameters[0m
+  Top k:              5                   Num Kernels:        6                   
+  Enc In:             7                   Dec In:             7                   
+  C Out:              7                   d model:            768                 
+  n heads:            4                   e layers:           2                   
+  d layers:           1                   d FF:               768                 
+  Moving Avg:         25                  Factor:             1                   
+  Distil:             1                   Dropout:            0.3                 
+  Embed:              timeF               Activation:         gelu                
+  Output Attention:   0                   
+
+[1mRun Parameters[0m
+  Num Workers:        10                  Itr:                1                   
+  Train Epochs:       100                 Batch Size:         256                 
+  Patience:           10                  Learning Rate:      0.0005              
+  Des:                test                Feature Loss:       l1                  Output Loss:        l1                  Task Loss:          ce                  
+  Lradj:              type1               Use Amp:            0                   
+
+[1mGPU[0m
+  Use GPU:            1                   GPU:                0                   
+  Use Multi GPU:      0                   Devices:            0,1,2,3             
+
+[1mDe-stationary Projector Params[0m
+  P Hidden Dims:      128, 128            P Hidden Layers:    2                   
+
+[1mDistill Loss Weight[0m
+  Feature Weight:     0.01                Output Weight:      1.0                 Task Weight:        1.0                 
+
+Use GPU: cuda:0
+>>>>>>>start training : classification_ECG_CALF_96_720_CALF_ECG_ftM_sl1_ll0_pl0_dm768_nh4_el2_dl1_df768_fc1_ebtimeF_dtTrue_test_gpt6_0>>>>>>>>>>>>>>>>>>>>>>>>>>
+Traceback (most recent call last):
+  File "/data/gpfs/projects/punim2341/feixiangz/CALF/run.py", line 178, in <module>
+    exp.train(setting)
+  File "/data/gpfs/projects/punim2341/feixiangz/CALF/exp/exp_classification.py", line 120, in train
+    for i, (batch_x, label, padding_mask) in enumerate(train_loader):
+  File "/data/gpfs/projects/punim2341/anaconda3/envs/calf/lib/python3.9/site-packages/torch/utils/data/dataloader.py", line 630, in __next__
+    data = self._next_data()
+  File "/data/gpfs/projects/punim2341/anaconda3/envs/calf/lib/python3.9/site-packages/torch/utils/data/dataloader.py", line 1344, in _next_data
+    return self._process_data(data)
+  File "/data/gpfs/projects/punim2341/anaconda3/envs/calf/lib/python3.9/site-packages/torch/utils/data/dataloader.py", line 1370, in _process_data
+    data.reraise()
+  File "/data/gpfs/projects/punim2341/anaconda3/envs/calf/lib/python3.9/site-packages/torch/_utils.py", line 706, in reraise
+    raise exception
+TypeError: Caught TypeError in DataLoader worker process 0.
+Original Traceback (most recent call last):
+  File "/data/gpfs/projects/punim2341/anaconda3/envs/calf/lib/python3.9/site-packages/torch/utils/data/_utils/worker.py", line 309, in _worker_loop
+    data = fetcher.fetch(index)  # type: ignore[possibly-undefined]
+  File "/data/gpfs/projects/punim2341/anaconda3/envs/calf/lib/python3.9/site-packages/torch/utils/data/_utils/fetch.py", line 52, in fetch
+    data = [self.dataset[idx] for idx in possibly_batched_index]
+  File "/data/gpfs/projects/punim2341/anaconda3/envs/calf/lib/python3.9/site-packages/torch/utils/data/_utils/fetch.py", line 52, in <listcomp>
+    data = [self.dataset[idx] for idx in possibly_batched_index]
+TypeError: __getitem__() takes 1 positional argument but 2 were given
+
+=====================================================================================================================
+Args in experiment:
+[1mBasic Config[0m
+  Task Name:          classification      Is Training:        1                   
+  Model ID:           ECG_CALF_96_720     Model:              CALF                
+
+[1mData Loader[0m
+  Data:               ECG                 Root Path:          ./datasets/ECG/     
+  Data Path:          x_train.pkl         Features:           M                   
+  Target:             OT                  Freq:               h                   
+  Checkpoints:        ./checkpoints/      
+
+[1mModel Parameters[0m
+  Top k:              5                   Num Kernels:        6                   
+  Enc In:             7                   Dec In:             7                   
+  C Out:              7                   d model:            768                 
+  n heads:            4                   e layers:           2                   
+  d layers:           1                   d FF:               768                 
+  Moving Avg:         25                  Factor:             1                   
+  Distil:             1                   Dropout:            0.3                 
+  Embed:              timeF               Activation:         gelu                
+  Output Attention:   0                   
+
+[1mRun Parameters[0m
+  Num Workers:        10                  Itr:                1                   
+  Train Epochs:       100                 Batch Size:         256                 
+  Patience:           10                  Learning Rate:      0.0005              
+  Des:                test                Feature Loss:       l1                  Output Loss:        l1                  Task Loss:          ce                  
+  Lradj:              type1               Use Amp:            0                   
+
+[1mGPU[0m
+  Use GPU:            1                   GPU:                0                   
+  Use Multi GPU:      0                   Devices:            0,1,2,3             
+
+[1mDe-stationary Projector Params[0m
+  P Hidden Dims:      128, 128            P Hidden Layers:    2                   
+
+[1mDistill Loss Weight[0m
+  Feature Weight:     0.01                Output Weight:      1.0                 Task Weight:        1.0                 
+
+Use GPU: cuda:0
+>>>>>>>start training : classification_ECG_CALF_96_720_CALF_ECG_ftM_sl1_ll0_pl0_dm768_nh4_el2_dl1_df768_fc1_ebtimeF_dtTrue_test_gpt6_0>>>>>>>>>>>>>>>>>>>>>>>>>>
+Traceback (most recent call last):
+  File "/data/gpfs/projects/punim2341/feixiangz/CALF/run.py", line 178, in <module>
+    exp.train(setting)
+  File "/data/gpfs/projects/punim2341/feixiangz/CALF/exp/exp_classification.py", line 120, in train
+    for i, (batch_x, label, padding_mask) in enumerate(train_loader):
+  File "/data/gpfs/projects/punim2341/anaconda3/envs/calf/lib/python3.9/site-packages/torch/utils/data/dataloader.py", line 630, in __next__
+    data = self._next_data()
+  File "/data/gpfs/projects/punim2341/anaconda3/envs/calf/lib/python3.9/site-packages/torch/utils/data/dataloader.py", line 1344, in _next_data
+    return self._process_data(data)
+  File "/data/gpfs/projects/punim2341/anaconda3/envs/calf/lib/python3.9/site-packages/torch/utils/data/dataloader.py", line 1370, in _process_data
+    data.reraise()
+  File "/data/gpfs/projects/punim2341/anaconda3/envs/calf/lib/python3.9/site-packages/torch/_utils.py", line 706, in reraise
+    raise exception
+TypeError: Caught TypeError in DataLoader worker process 0.
+Original Traceback (most recent call last):
+  File "/data/gpfs/projects/punim2341/anaconda3/envs/calf/lib/python3.9/site-packages/torch/utils/data/_utils/worker.py", line 309, in _worker_loop
+    data = fetcher.fetch(index)  # type: ignore[possibly-undefined]
+  File "/data/gpfs/projects/punim2341/anaconda3/envs/calf/lib/python3.9/site-packages/torch/utils/data/_utils/fetch.py", line 52, in fetch
+    data = [self.dataset[idx] for idx in possibly_batched_index]
+  File "/data/gpfs/projects/punim2341/anaconda3/envs/calf/lib/python3.9/site-packages/torch/utils/data/_utils/fetch.py", line 52, in <listcomp>
+    data = [self.dataset[idx] for idx in possibly_batched_index]
+TypeError: __getitem__() takes 1 positional argument but 2 were given
+
+=====================================================================================================================
+Args in experiment:
+[1mBasic Config[0m
+  Task Name:          classification      Is Training:        1                   
+  Model ID:           ECG_CALF_96_720     Model:              CALF                
+
+[1mData Loader[0m
+  Data:               ECG                 Root Path:          ./datasets/ECG/     
+  Data Path:          x_train.pkl         Features:           M                   
+  Target:             OT                  Freq:               h                   
+  Checkpoints:        ./checkpoints/      
+
+[1mModel Parameters[0m
+  Top k:              5                   Num Kernels:        6                   
+  Enc In:             7                   Dec In:             7                   
+  C Out:              7                   d model:            768                 
+  n heads:            4                   e layers:           2                   
+  d layers:           1                   d FF:               768                 
+  Moving Avg:         25                  Factor:             1                   
+  Distil:             1                   Dropout:            0.3                 
+  Embed:              timeF               Activation:         gelu                
+  Output Attention:   0                   
+
+[1mRun Parameters[0m
+  Num Workers:        10                  Itr:                1                   
+  Train Epochs:       100                 Batch Size:         256                 
+  Patience:           10                  Learning Rate:      0.0005              
+  Des:                test                Feature Loss:       l1                  Output Loss:        l1                  Task Loss:          ce                  
+  Lradj:              type1               Use Amp:            0                   
+
+[1mGPU[0m
+  Use GPU:            1                   GPU:                0                   
+  Use Multi GPU:      0                   Devices:            0,1,2,3             
+
+[1mDe-stationary Projector Params[0m
+  P Hidden Dims:      128, 128            P Hidden Layers:    2                   
+
+[1mDistill Loss Weight[0m
+  Feature Weight:     0.01                Output Weight:      1.0                 Task Weight:        1.0                 
+
+Use GPU: cuda:0
+>>>>>>>start training : classification_ECG_CALF_96_720_CALF_ECG_ftM_sl1_ll0_pl0_dm768_nh4_el2_dl1_df768_fc1_ebtimeF_dtTrue_test_gpt6_0>>>>>>>>>>>>>>>>>>>>>>>>>>
+Traceback (most recent call last):
+  File "/data/gpfs/projects/punim2341/feixiangz/CALF/run.py", line 178, in <module>
+    exp.train(setting)
+  File "/data/gpfs/projects/punim2341/feixiangz/CALF/exp/exp_classification.py", line 120, in train
+    for i, (batch_x, label, padding_mask) in enumerate(train_loader):
+  File "/data/gpfs/projects/punim2341/anaconda3/envs/calf/lib/python3.9/site-packages/torch/utils/data/dataloader.py", line 630, in __next__
+    data = self._next_data()
+  File "/data/gpfs/projects/punim2341/anaconda3/envs/calf/lib/python3.9/site-packages/torch/utils/data/dataloader.py", line 1344, in _next_data
+    return self._process_data(data)
+  File "/data/gpfs/projects/punim2341/anaconda3/envs/calf/lib/python3.9/site-packages/torch/utils/data/dataloader.py", line 1370, in _process_data
+    data.reraise()
+  File "/data/gpfs/projects/punim2341/anaconda3/envs/calf/lib/python3.9/site-packages/torch/_utils.py", line 706, in reraise
+    raise exception
+TypeError: Caught TypeError in DataLoader worker process 0.
+Original Traceback (most recent call last):
+  File "/data/gpfs/projects/punim2341/anaconda3/envs/calf/lib/python3.9/site-packages/torch/utils/data/_utils/worker.py", line 309, in _worker_loop
+    data = fetcher.fetch(index)  # type: ignore[possibly-undefined]
+  File "/data/gpfs/projects/punim2341/anaconda3/envs/calf/lib/python3.9/site-packages/torch/utils/data/_utils/fetch.py", line 52, in fetch
+    data = [self.dataset[idx] for idx in possibly_batched_index]
+  File "/data/gpfs/projects/punim2341/anaconda3/envs/calf/lib/python3.9/site-packages/torch/utils/data/_utils/fetch.py", line 52, in <listcomp>
+    data = [self.dataset[idx] for idx in possibly_batched_index]
+TypeError: __getitem__() takes 1 positional argument but 2 were given
+
+=====================================================================================================================
+Job ID           : 63808768
+Cluster          : spartan
+User/Project     : feixiangz/punim2341
+Nodes            : 1
+Wall-clock time  : 00:00:44 / 04:00:00
+
+Displaying overall resources usage from 2024-08-07 13:50:16 to 2024-08-07 13:51:00:
+
+NODE            CPU#        TOT%   ( USR   / SYS   / WIO   / IDLE  ) 
+
+spartan-gpgpu129 : 
+                CPU# 1    : 11.2   (   4.5 /   6.8 /   0.4 /  88.3 ) 
+                CPU# 2    : 36.2   (  16.2 /  19.9 /   0.5 /  63.4 ) 
+                CPU# 3    : 3.3    (   1.7 /   1.6 /   0.3 /  96.5 ) 
+                CPU# 4    : 6.2    (   4.4 /   1.8 /   0.5 /  93.3 ) 
+
+                GPU# 1    : 0.0   
+
+
+Allocated CPUs            : 4    
+  CPUs with usage <25%    : 3    
+  CPUs with usage <50%    : 1    
+  CPUs with usage >50%    : 0    
+
+
+Allocated GPUs            : 1    
+  GPUs with usage <25%    : 1    
+  GPUs with usage <50%    : 0    
+  GPUs with usage >50%    : 0    
+
+Memory used (RAM)         : 10.6%  [1788MB of 16778MB]
+
+--------------------------------------------
+
