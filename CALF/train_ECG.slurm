@@ -1,13 +1,13 @@
 #!/bin/bash
 #SBATCH --job-name="calf"
 #SBATCH --account="punim2341"
-#SBATCH --partition=gpu-a100-short
+#SBATCH --partition=gpu-a100
 #SBATCH --nodes=1
-#SBATCH --time=4:00:00
+#SBATCH --time=1:00:00
 #SBATCH --gres=gpu:1
 #SBATCH --ntasks=4
 #SBATCH --ntasks-per-node=4
-#SBATCH --mem=50G
+#SBATCH --mem=40G
 
 module purge
 module load foss/2022a
@@ -26,11 +26,11 @@ python run.py \
     --data_path x_train.pkl \
     --is_training 1 \
     --task_name classification \
-    --model_id ECG_CALF'_'96'_'720 \
+    --model_id ECG_$model'_'$seq_len'_'$pred_len \
     --data ECG \
-    --seq_len 96 \
+    --seq_len $seq_len \
     --label_len 0 \
-    --pred_len 720 \
+    --pred_len $pred_len \
     --batch_size 256 \
     --learning_rate 0.0005 \
     --lradj type1 \
@@ -43,7 +43,7 @@ python run.py \
     --c_out 7 \
     --gpt_layer 6 \
     --itr 1 \
-    --model CALF \
+    --model $model \
     --r 8 \
     --lora_alpha 32 \
     --lora_dropout 0.1 \

@@ -1,5 +1,6 @@
 import os
 import numpy as np
+import scipy
 import pandas as pd
 import glob
 import re
@@ -80,7 +81,7 @@ class Dataset_ETT_hour(Dataset):
             data_stamp = df_stamp.drop(['date'], 1).values
         elif self.timeenc == 1:
             data_stamp = time_features(pd.to_datetime(df_stamp['date'].values), freq=self.freq)
-            data_stamp = data_stamp.transpose(1, 0) 
+            data_stamp = data_stamp.transpose(1, 0)
 
         self.data_x = data[border1:border2]
         self.data_y = data[border1:border2]
@@ -145,7 +146,7 @@ class Dataset_ETT_minute(Dataset):
         border2s = [12 * 30 * 24 * 4, 12 * 30 * 24 * 4 + 4 * 30 * 24 * 4, 12 * 30 * 24 * 4 + 8 * 30 * 24 * 4]
         border1 = border1s[self.set_type]
         border2 = border2s[self.set_type]
-        
+
         if self.set_type == 0:
             border2 = (border2 - self.seq_len) * self.percent // 100 + self.seq_len
 
@@ -225,7 +226,7 @@ class Dataset_Custom(Dataset):
         self.timeenc = timeenc
         self.freq = freq
         self.percent = percent
-        
+
         self.root_path = root_path
         self.data_path = data_path
         self.__read_data__()
@@ -669,7 +670,7 @@ class UEAloader(Dataset):
             data_paths = list(filter(lambda x: re.search(flag, x), data_paths))
         input_paths = [p for p in data_paths if os.path.isfile(p) and p.endswith('.ts')]
         if len(input_paths) == 0:
-            pattern='*.ts'
+            pattern = '*.ts'
             raise Exception("No .ts files found using pattern: '{}'".format(pattern))
 
         all_df, labels_df = self.load_single(input_paths[0])  # a single file contains dataset
@@ -678,7 +679,7 @@ class UEAloader(Dataset):
 
     def load_single(self, filepath):
         df, labels = load_from_tsfile_to_dataframe(filepath, return_separate_X_and_y=True,
-                                                             replace_missing_vals_with='NaN')
+                                                   replace_missing_vals_with='NaN')
         labels = pd.Series(labels, dtype="category")
         self.class_names = labels.cat.categories
         labels_df = pd.DataFrame(labels.cat.codes,
@@ -724,129 +725,7 @@ class UEAloader(Dataset):
 
     def __getitem__(self, ind):
         return self.instance_norm(torch.from_numpy(self.feature_df.loc[self.all_IDs[ind]].values)), \
-               torch.from_numpy(self.labels_df.loc[self.all_IDs[ind]].values)
-
-    def __len__(self):
-        return len(self.all_IDs)
-
-
-class Dataset_ECG(Dataset):
-    """
-    Dataset class for datasets included in:
-        Time Series Classification Archive (www.timeseriesclassification.com)
-    Argument:
-        limit_size: float in (0, 1) for debug
-    Attributes:
-        all_df: (num_samples * seq_len, num_columns) dataframe indexed by integer indices, with multiple rows corresponding to the same index (sample).
-            Each row is a time step; Each column contains either metadata (e.g. timestamp) or a feature.
-        feature_df: (num_samples * seq_len, feat_dim) dataframe; contains the subset of columns of `all_df` which correspond to selected features
-        feature_names: names of columns contained in `feature_df` (same as feature_df.columns)
-        all_IDs: (num_samples,) series of IDs contained in `all_df`/`feature_df` (same as all_df.index.unique() )
-        labels_df: (num_samples, num_labels) pd.DataFrame of label(s) for each sample
-        max_seq_len: maximum sequence (time series) length. If None, script argument `max_seq_len` will be used.
-            (Moreover, script argument overrides this attribute)
-    """
-
-    def __init__(self, root_path, file_list=None, limit_size=None, flag=None, percent=100):
-        self.root_path = root_path
-        self.all_df, self.labels_df = self.load_all(root_path, file_list=file_list, flag=flag)
-        self.all_IDs = self.all_df.index.unique()  # all sample IDs (integer indices 0 ... num_samples-1)
-
-        if limit_size is not None:
-            if limit_size > 1:
-                limit_size = int(limit_size)
-            else:  # interpret as proportion if in (0, 1]
-                limit_size = int(limit_size * len(self.all_IDs))
-            self.all_IDs = self.all_IDs[:limit_size]
-            self.all_df = self.all_df.loc[self.all_IDs]
-
-        # use all features
-        self.feature_names = self.all_df.columns
-        self.feature_df = self.all_df
-
-        # pre_process
-        normalizer = Normalizer()
-        self.feature_df = normalizer.normalize(self.feature_df)
-        print(len(self.all_IDs))
-
-    def load_all(self, root_path, file_list=None, flag=None):
-        """
-        Loads datasets from csv files contained in `root_path` into a dataframe, optionally choosing from `pattern`
-        Args:
-            root_path: directory containing all individual .csv files
-            file_list: optionally, provide a list of file paths within `root_path` to consider.
-                Otherwise, entire `root_path` contents will be used.
-        Returns:
-            all_df: a single (possibly concatenated) dataframe with all data corresponding to specified files
-            labels_df: dataframe containing label(s) for each sample
-        """
-        # Select paths for training and evaluation
-        if file_list is None:
-            data_paths = glob.glob(os.path.join(root_path, '*'))  # list of all paths
-        else:
-            data_paths = [os.path.join(root_path, p) for p in file_list]
-        if len(data_paths) == 0:
-            raise Exception('No files found using: {}'.format(os.path.join(root_path, '*')))
-        if flag is not None:
-            data_paths = list(filter(lambda x: re.search(flag, x), data_paths))
-        input_paths = [p for p in data_paths if os.path.isfile(p) and p.endswith('.ts')]
-        if len(input_paths) == 0:
-            pattern='*.ts'
-            raise Exception("No .ts files found using pattern: '{}'".format(pattern))
-
-        all_df, labels_df = self.load_single(input_paths[0])  # a single file contains dataset
-
-        return all_df, labels_df
-
-    def load_single(self, filepath):
-        df, labels = load_from_tsfile_to_dataframe(filepath, return_separate_X_and_y=True,
-                                                             replace_missing_vals_with='NaN')
-        labels = pd.Series(labels, dtype="category")
-        self.class_names = labels.cat.categories
-        labels_df = pd.DataFrame(labels.cat.codes,
-                                 dtype=np.int8)  # int8-32 gives an error when using nn.CrossEntropyLoss
-
-        lengths = df.applymap(
-            lambda x: len(x)).values  # (num_samples, num_dimensions) array containing the length of each series
-
-        horiz_diffs = np.abs(lengths - np.expand_dims(lengths[:, 0], -1))
-
-        if np.sum(horiz_diffs) > 0:  # if any row (sample) has varying length across dimensions
-            df = df.applymap(subsample)
-
-        lengths = df.applymap(lambda x: len(x)).values
-        vert_diffs = np.abs(lengths - np.expand_dims(lengths[0, :], 0))
-        if np.sum(vert_diffs) > 0:  # if any column (dimension) has varying length across samples
-            self.max_seq_len = int(np.max(lengths[:, 0]))
-        else:
-            self.max_seq_len = lengths[0, 0]
-
-        # First create a (seq_len, feat_dim) dataframe for each sample, indexed by a single integer ("ID" of the sample)
-        # Then concatenate into a (num_samples * seq_len, feat_dim) dataframe, with multiple rows corresponding to the
-        # sample index (i.e. the same scheme as all datasets in this project)
-
-        df = pd.concat((pd.DataFrame({col: df.loc[row, col] for col in df.columns}).reset_index(drop=True).set_index(
-            pd.Series(lengths[row, 0] * [row])) for row in range(df.shape[0])), axis=0)
-
-        # Replace NaN values
-        grp = df.groupby(by=df.index)
-        df = grp.transform(interpolate_missing)
-
-        return df, labels_df
-
-    def instance_norm(self, case):
-        if self.root_path.count('EthanolConcentration') > 0:  # special process for numerical stability
-            mean = case.mean(0, keepdim=True)
-            case = case - mean
-            stdev = torch.sqrt(torch.var(case, dim=1, keepdim=True, unbiased=False) + 1e-5)
-            case /= stdev
-            return case
-        else:
-            return case
-
-    def __getitem__(self, ind):
-        return self.instance_norm(torch.from_numpy(self.feature_df.loc[self.all_IDs[ind]].values)), \
-               torch.from_numpy(self.labels_df.loc[self.all_IDs[ind]].values)
+            torch.from_numpy(self.labels_df.loc[self.all_IDs[ind]].values)
 
     def __len__(self):
         return len(self.all_IDs)
@@ -854,24 +733,60 @@ class Dataset_ECG(Dataset):
 
 class Dataset_ECG(Dataset):
 
-    def __init__(self, root_path, flag='train', seq_len=1, label_len=1, pred_len=1, scale=True, percent=100):
+    def __init__(self, root_path, flag='train', seq_len=2500, label_len=1, pred_len=1, scale=True, percent=100):
         # load data
-        # 合并x, y
         if flag == "train":
-            self.data = pd.read_pickle(root_path + "x_train.pkl")
-            self.max_seq_len = 1
+            self.x_data = pd.read_pickle(root_path + "x_train.pkl")
+            self.y_data = pd.read_pickle(root_path + "state_train.pkl")
         elif flag == "val":
-            self.data = pd.read_pickle(root_path + "x_val.pkl")
-            self.max_seq_len = 1
+            self.x_data = pd.read_pickle(root_path + "x_val.pkl")
+            self.y_data = pd.read_pickle(root_path + "state_val.pkl")
         elif flag == "test":
-            self.data = pd.read_pickle(root_path + "x_test.pkl")
-            self.max_seq_len = 1
-        self.class_names = ['AFIB', 'AFL', 'J']
-        self.feature_df = self.data
+            self.x_data = pd.read_pickle(root_path + "x_test.pkl")
+            self.y_data = pd.read_pickle(root_path + "state_test.pkl")
+        self.class_names = ['AFIB', 'AFL', 'J', 'N']
+        self.max_seq_len = seq_len
+        self.feature_df = self.x_data
 
-    # add label
+        # segment data
+        self.segment_data(seq_len, strategy="discard")
+
+    def segment_data(self, seq_len, strategy="discard"):
+        num_samples, num_channels, total_length = self.x_data.shape
+
+        if strategy == "discard":
+            # discard the last segment if it is shorter than seq_len
+            num_segments = total_length // seq_len
+            self.x_data = self.x_data[:, :, :num_segments * seq_len]
+            self.y_data = self.y_data[:, :num_segments * seq_len]
+        elif strategy == "pad":
+            # pad the last segment if it is shorter than seq_len
+            num_segments = np.ceil(total_length / seq_len).astype(int)
+            self.x_data = np.pad(self.x_data, ((0, 0), (0, 0), (0, num_segments * seq_len - total_length)),
+                                 mode='constant', constant_values=0)
+            self.y_data = np.pad(self.y_data, ((0, 0), (0, num_segments * seq_len - total_length)), mode='constant',
+                                 constant_values=0)
+
+        # reshape x_data to (num_samples * num_segments, num_channels, seq_len)
+        self.x_data = self.x_data.reshape(num_samples, num_channels, num_segments, seq_len).transpose(0, 2, 3,
+                                                                                                      1).reshape(
+            num_samples * num_segments, seq_len, num_channels)
+
+        # reshape y_data to (num_samples * num_segments, 1)
+        self.y_data = self.y_data.reshape(num_samples, num_segments, seq_len)
+        # compute the mode for each segment, find the most common label
+        # mode_labels = np.argmax(np.sum(self.y_data, axis=2), axis=1)
+        mode_labels = scipy.stats.mode(self.y_data, axis=2).mode
+        self.y_data = mode_labels.reshape(num_samples * num_segments, 1)
+
+        # reshape y_data to (num_samples * num_segments, 1)
+        # self.y_data = self.y_data.reshape((-1, 1))
+        # reshape y_data to (num_samples * num_segments, seq_len)
+        # self.y_data = self.y_data.reshape(num_samples, num_segments, seq_len).reshape(num_samples * num_segments,
+        #                                                                               seq_len)
+
     def __getitem__(self, index):
-        return self.data[index], self.label[index]
+        return self.x_data[index], self.y_data[index]
 
     def __len__(self):
-        return len(self.data)
+        return len(self.x_data)

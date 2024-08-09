@@ -21,6 +21,7 @@ class Exp_Classification(Exp_Basic):
     def _build_model(self):
         # model input depends on data
         train_data, train_loader = self._get_data(flag='train')
+        vali_data, vali_loader = self._get_data(flag='val')
         test_data, test_loader = self._get_data(flag='test')
         self.args.seq_len = max(train_data.max_seq_len, test_data.max_seq_len)
         self.args.pred_len = 0
@@ -39,7 +40,8 @@ class Exp_Classification(Exp_Basic):
     def _select_optimizer(self):
         param_dict = [
             {"params": [p for n, p in self.model.named_parameters() if p.requires_grad and '_proj' in n], "lr": 1e-4},
-            {"params": [p for n, p in self.model.named_parameters() if p.requires_grad and '_proj' not in n], "lr": self.args.learning_rate}
+            {"params": [p for n, p in self.model.named_parameters() if p.requires_grad and '_proj' not in n],
+             "lr": self.args.learning_rate}
         ]
         model_optim = optim.Adam([param_dict[1]], lr=self.args.learning_rate)
         loss_optim = optim.Adam([param_dict[0]], lr=self.args.learning_rate)
@@ -47,55 +49,21 @@ class Exp_Classification(Exp_Basic):
         return model_optim, loss_optim
 
     def _select_criterion(self):
-        criterion = cmLoss(self.args.feature_loss, 
-                           self.args.output_loss, 
-                           self.args.task_loss, 
-                           self.args.task_name, 
-                           self.args.feature_w, 
-                           self.args.output_w, 
+        criterion = cmLoss(self.args.feature_loss,
+                           self.args.output_loss,
+                           self.args.task_loss,
+                           self.args.task_name,
+                           self.args.feature_w,
+                           self.args.output_w,
                            self.args.task_w)
         return criterion
 
     def _select_vali_criterion(self):
         return nn.CrossEntropyLoss()
 
-    def vali(self, vali_data, vali_loader, criterion):
-        total_loss = []
-        preds = []
-        trues = []
-
-        self.model.eval()
-
-        with torch.no_grad():
-            for i, (batch_x, label, padding_mask) in enumerate(vali_loader):
-                batch_x = batch_x.float().to(self.device)
-                padding_mask = padding_mask.float().to(self.device)
-                label = label.to(self.device)
-
-                outputs = self.model(batch_x, padding_mask)["outputs_time"]
-
-                pred = outputs.detach().cpu()
-                loss = criterion(pred, label.long().squeeze().cpu())
-                total_loss.append(loss)
-
-                preds.append(outputs.detach())
-                trues.append(label)
-
-        total_loss = np.average(total_loss)
-
-        preds = torch.cat(preds, 0)
-        trues = torch.cat(trues, 0)
-        probs = torch.nn.functional.softmax(preds)  # (total_samples, num_classes) est. prob. for each class and sample
-        predictions = torch.argmax(probs, dim=1).cpu().numpy()  # (total_samples,) int class index for each sample
-        trues = trues.flatten().cpu().numpy()
-        accuracy = cal_accuracy(predictions, trues)
-
-        self.model.train()
-        return total_loss, accuracy
-
     def train(self, setting):
         train_data, train_loader = self._get_data(flag='train')
-        vali_data, vali_loader = self._get_data(flag='test')
+        vali_data, vali_loader = self._get_data(flag='val')
         test_data, test_loader = self._get_data(flag='test')
 
         path = os.path.join(self.args.checkpoints, setting)
@@ -110,6 +78,8 @@ class Exp_Classification(Exp_Basic):
         model_optim, loss_optim = self._select_optimizer()
         criterion = self._select_criterion()
 
+        # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(model_optim, T_max=self.args.tmax, eta_min=1e-8)
+
         for epoch in range(self.args.train_epochs):
             iter_count = 0
             train_loss = []
@@ -117,13 +87,16 @@ class Exp_Classification(Exp_Basic):
             self.model.train()
             epoch_time = time.time()
 
-            for i, (batch_x, label, padding_mask) in enumerate(train_loader):
+            for i, (batch_x, label) in enumerate(train_loader):
                 iter_count += 1
                 model_optim.zero_grad()
                 loss_optim.zero_grad()
 
                 batch_x = batch_x.float().to(self.device)
                 label = label.to(self.device)
+
+                print("batch_x shape: ", batch_x.shape)
+                print("label shape: ", label.shape)
 
                 outputs = self.model(batch_x)
 
@@ -151,6 +124,13 @@ class Exp_Classification(Exp_Basic):
             print(
                 "Epoch: {0}, Steps: {1} | Train Loss: {2:.3f} Vali Loss: {3:.3f} Vali Acc: {4:.3f} Test Loss: {5:.3f} Test Acc: {6:.3f}"
                 .format(epoch + 1, train_steps, train_loss, vali_loss, val_accuracy, test_loss, test_accuracy))
+
+            # if self.args.cos:
+            #     scheduler.step()
+            #     print("lr = {}".format(model_optim.param_groups[0]['lr']))
+            # else:
+            #     adjust_learning_rate(model_optim, epoch + 1, self.args)
+
             early_stopping(-val_accuracy, self.model, path)
             if early_stopping.early_stop:
                 print("Early stopping")
@@ -163,8 +143,41 @@ class Exp_Classification(Exp_Basic):
 
         return self.model
 
+    def vali(self, vali_data, vali_loader, criterion):
+        total_loss = []
+        preds = []
+        trues = []
+
+        self.model.eval()
+
+        with torch.no_grad():
+            for i, (batch_x, label) in enumerate(vali_loader):
+                batch_x = batch_x.float().to(self.device)
+                label = label.to(self.device)
+
+                outputs = self.model(batch_x)["outputs_time"]
+
+                pred = outputs.detach().cpu()
+                loss = criterion(pred, label.long().squeeze().cpu())
+                total_loss.append(loss)
+
+                preds.append(outputs.detach())
+                trues.append(label)
+
+        total_loss = np.average(total_loss)
+
+        preds = torch.cat(preds, 0)
+        trues = torch.cat(trues, 0)
+        probs = torch.nn.functional.softmax(preds)  # (total_samples, num_classes) est. prob. for each class and sample
+        predictions = torch.argmax(probs, dim=1).cpu().numpy()  # (total_samples,) int class index for each sample
+        trues = trues.flatten().cpu().numpy()
+        accuracy = cal_accuracy(predictions, trues)
+
+        self.model.train()
+        return total_loss, accuracy
+
     def test(self, setting, test=0):
-        test_data, test_loader = self._get_data(flag='TEST')
+        test_data, test_loader = self._get_data(flag='test')
         if test:
             print('loading model')
             self.model.load_state_dict(torch.load(os.path.join('./checkpoints/' + setting, 'checkpoint.pth')))
@@ -177,12 +190,11 @@ class Exp_Classification(Exp_Basic):
 
         self.model.eval()
         with torch.no_grad():
-            for i, (batch_x, label, padding_mask) in enumerate(test_loader):
+            for i, (batch_x, label) in enumerate(test_loader):
                 batch_x = batch_x.float().to(self.device)
-                padding_mask = padding_mask.float().to(self.device)
                 label = label.to(self.device)
 
-                outputs = self.model(batch_x, padding_mask)["outputs_time"]
+                outputs = self.model(batch_x)["outputs_time"]
 
                 preds.append(outputs.detach())
                 trues.append(label)
@@ -202,8 +214,8 @@ class Exp_Classification(Exp_Basic):
             os.makedirs(folder_path)
 
         print('accuracy:{}'.format(accuracy))
-        file_name='result_classification.txt'
-        f = open(os.path.join(folder_path,file_name), 'a')
+        file_name = 'result_classification.txt'
+        f = open(os.path.join(folder_path, file_name), 'a')
         f.write(setting + "  \n")
         f.write('accuracy:{}'.format(accuracy))
         f.write('\n')

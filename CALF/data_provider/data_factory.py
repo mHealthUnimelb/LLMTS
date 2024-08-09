@@ -22,6 +22,7 @@ data_dict = {
 
 def data_provider(args, flag, vali=False):
     Data = data_dict[args.data]
+    print("Data: ", Data)
     timeenc = 0 if args.embed != 'timeF' else 1
 
     if flag == 'test':
@@ -59,14 +60,13 @@ def data_provider(args, flag, vali=False):
             root_path=args.root_path,
             flag=flag,
         )
-
         data_loader = DataLoader(
             data_set,
             batch_size=batch_size,
             shuffle=shuffle_flag,
             num_workers=args.num_workers,
             drop_last=drop_last,
-            collate_fn=lambda x: collate_fn(x, max_len=args.seq_len)
+            # collate_fn=lambda x: collate_fn(x, max_len=args.seq_len)
         )
         return data_set, data_loader
     else:
