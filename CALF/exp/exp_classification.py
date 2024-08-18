@@ -10,6 +10,8 @@ import time
 import warnings
 import numpy as np
 import pdb
+import matplotlib.pyplot as plt
+from sklearn.metrics import confusion_matrix, roc_auc_score, ConfusionMatrixDisplay
 
 warnings.filterwarnings('ignore')
 
@@ -17,6 +19,15 @@ warnings.filterwarnings('ignore')
 class Exp_Classification(Exp_Basic):
     def __init__(self, args):
         super(Exp_Classification, self).__init__(args)
+        self.train_accuracies = []
+        self.vali_accuracies = []
+        self.test_accuracies = []
+        self.train_losses = []
+        self.vali_losses = []
+        self.test_losses = []
+        self.train_roc_aucs = []
+        self.vali_roc_aucs = []
+        self.test_roc_aucs = []
 
     def _build_model(self):
         # model input depends on data
@@ -83,6 +94,8 @@ class Exp_Classification(Exp_Basic):
         for epoch in range(self.args.train_epochs):
             iter_count = 0
             train_loss = []
+            train_preds = []
+            train_trues = []
 
             self.model.train()
             epoch_time = time.time()
@@ -103,6 +116,9 @@ class Exp_Classification(Exp_Basic):
                 loss = criterion(outputs, label.long().squeeze(-1))
                 train_loss.append(loss.item())
 
+                train_preds.append(outputs["outputs_time"].detach())
+                train_trues.append(label)
+
                 if (i + 1) % 100 == 0:
                     print("\titers: {0}, epoch: {1} | loss: {2:.7f}".format(i + 1, epoch + 1, loss.item()))
                     speed = (time.time() - time_now) / iter_count
@@ -117,13 +133,33 @@ class Exp_Classification(Exp_Basic):
                 loss_optim.step()
 
             print("Epoch: {} cost time: {}".format(epoch + 1, time.time() - epoch_time))
+
             train_loss = np.average(train_loss)
-            vali_loss, val_accuracy = self.vali(vali_data, vali_loader, self._select_vali_criterion())
-            test_loss, test_accuracy = self.vali(test_data, test_loader, self._select_vali_criterion())
+            self.train_losses.append(train_loss)
+            # calculate accuracy
+            train_preds = torch.cat(train_preds, 0)
+            train_trues = torch.cat(train_trues, 0)
+            train_probs = torch.nn.functional.softmax(train_preds)
+            train_predictions = torch.argmax(train_probs, dim=1).cpu().numpy()
+            train_trues = train_trues.flatten().cpu().numpy()
+            train_accuracy = cal_accuracy(train_predictions, train_trues)
+            self.train_accuracies.append(train_accuracy)
+            # calculate roc_auc score
+            train_roc_auc = roc_auc_score(train_trues, train_probs.cpu().numpy(), multi_class='ovr', average='weighted', labels=list(range(self.args.num_class)))
+            self.train_roc_aucs.append(train_roc_auc)
+
+            vali_loss, vali_accuracy, vali_roc_auc = self.vali(vali_data, vali_loader, self._select_vali_criterion())
+            self.vali_losses.append(vali_loss)
+            self.vali_accuracies.append(vali_accuracy)
+            self.vali_roc_aucs.append(vali_roc_auc)
+            test_loss, test_accuracy, test_roc_auc = self.vali(test_data, test_loader, self._select_vali_criterion())
+            self.test_losses.append(test_loss)
+            self.test_accuracies.append(test_accuracy)
+            self.test_roc_aucs.append(test_roc_auc)
 
             print(
-                "Epoch: {0}, Steps: {1} | Train Loss: {2:.3f} Vali Loss: {3:.3f} Vali Acc: {4:.3f} Test Loss: {5:.3f} Test Acc: {6:.3f}"
-                .format(epoch + 1, train_steps, train_loss, vali_loss, val_accuracy, test_loss, test_accuracy))
+                "Epoch: {0}, Steps: {1} | Train Loss: {2:.3f} Train Acc: {3:.3f} Train ROC AUC: {4:.3f} Vali Loss: {5:.3f} Vali Acc: {6:.3f} Vali ROC AUC: {7:.3f} Test Loss: {8:.3f} Test Acc: {9:.3f} Test ROC AUC: {10:.3f}"
+                .format(epoch + 1, train_steps, train_loss, train_accuracy, train_roc_auc, vali_loss, vali_accuracy, vali_roc_auc, test_loss, test_accuracy, test_roc_auc))
 
             # if self.args.cos:
             #     scheduler.step()
@@ -131,7 +167,8 @@ class Exp_Classification(Exp_Basic):
             # else:
             #     adjust_learning_rate(model_optim, epoch + 1, self.args)
 
-            early_stopping(-val_accuracy, self.model, path)
+            # early_stopping(-vali_accuracy, self.model, path)
+            early_stopping(vali_loss, self.model, path)
             if early_stopping.early_stop:
                 print("Early stopping")
                 break
@@ -140,6 +177,9 @@ class Exp_Classification(Exp_Basic):
 
         best_model_path = path + '/' + 'checkpoint.pth'
         self.model.load_state_dict(torch.load(best_model_path))
+
+        # plot and save the training, validation, test accuracy and loss figure
+        self.plot_and_save_metrics(setting)
 
         return self.model
 
@@ -168,19 +208,27 @@ class Exp_Classification(Exp_Basic):
 
         preds = torch.cat(preds, 0)
         trues = torch.cat(trues, 0)
+        # print(f'{vali_data.x_data.shape} shape: {preds.shape} {trues.shape}')
+        print('test shape:', preds.shape, trues.shape)
         probs = torch.nn.functional.softmax(preds)  # (total_samples, num_classes) est. prob. for each class and sample
         predictions = torch.argmax(probs, dim=1).cpu().numpy()  # (total_samples,) int class index for each sample
         trues = trues.flatten().cpu().numpy()
         accuracy = cal_accuracy(predictions, trues)
+        roc_auc = roc_auc_score(trues, probs.cpu().numpy(), multi_class='ovr', average='weighted', labels=list(range(self.args.num_class)))
+
+        # Saving true labels and predictions
+        np.savetxt('./results/vali_trues.txt', trues, fmt='%d')
+        np.savetxt('./results/vali_predictions.txt', predictions, fmt='%d')
 
         self.model.train()
-        return total_loss, accuracy
+        return total_loss, accuracy, roc_auc
 
     def test(self, setting, test=0):
         test_data, test_loader = self._get_data(flag='test')
         if test:
             print('loading model')
-            self.model.load_state_dict(torch.load(os.path.join('./checkpoints/' + setting, 'checkpoint.pth')))
+            # self.model.load_state_dict(torch.load(os.path.join('./checkpoints/' + setting, 'checkpoint.pth')))
+            self.model.load_state_dict(torch.load('./checkpoints/classification_ECG_CALF_2500__CALF_ECG_ftM_sl2500_ll0_pl0_dm768_nh4_el2_dl1_df768_fc1_ebtimeF_dtTrue_test_gpt6_0/checkpoint.pth'))
 
         preds = []
         trues = []
@@ -207,18 +255,63 @@ class Exp_Classification(Exp_Basic):
         predictions = torch.argmax(probs, dim=1).cpu().numpy()  # (total_samples,) int class index for each sample
         trues = trues.flatten().cpu().numpy()
         accuracy = cal_accuracy(predictions, trues)
+        roc_auc = roc_auc_score(trues, probs.cpu().numpy(), multi_class='ovr', average='weighted', labels=list(range(self.args.num_class)))
 
         # result save
         folder_path = './results/' + setting + '/'
         if not os.path.exists(folder_path):
             os.makedirs(folder_path)
 
+        # Compute Confusion Matrix
+        cm = confusion_matrix(trues, predictions)
+        disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_label=list(range(self.args.num_class)))
+        disp.plot()
+        plt.title(f'Confusion Matrix for {setting}')
+        plt.savefig(f'./results/{setting}/confusion_matrix.png')
+        plt.close()
+
         print('accuracy:{}'.format(accuracy))
+        print('ROC AUC Score:{}'.format(roc_auc))
         file_name = 'result_classification.txt'
         f = open(os.path.join(folder_path, file_name), 'a')
         f.write(setting + "  \n")
         f.write('accuracy:{}'.format(accuracy))
+        f.write('ROC AUC Score:{}'.format(roc_auc))
         f.write('\n')
         f.write('\n')
         f.close()
+
+        # Saving true labels and predictions
+        np.savetxt(os.path.join(folder_path, 'test_trues.txt'), trues, fmt='%d')
+        np.savetxt(os.path.join(folder_path, 'test_predictions.txt'), predictions, fmt='%d')
         return
+
+
+    def plot_and_save_metrics(self, setting):
+        directory = f'./results/{setting}'
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+
+        # Plotting accuracy
+        plt.figure(figsize=(10, 4))
+        plt.plot(self.train_accuracies, label='Train Accuracy')
+        plt.plot(self.vali_accuracies, label='Validation Accuracy')
+        plt.plot(self.test_accuracies, label='Test Accuracy')
+        plt.xlabel('Epoch')
+        plt.ylabel('Accuracy')
+        plt.title('Accuracy over Epochs')
+        plt.legend()
+        plt.savefig(f'./results/{setting}/accuracy_plot.png')
+        plt.close()
+
+        # Plotting loss
+        plt.figure(figsize=(10, 4))
+        plt.plot(self.train_losses, label='Train Loss')
+        plt.plot(self.vali_losses, label='Validation Loss')
+        plt.plot(self.test_losses, label='Test Loss')
+        plt.xlabel('Epoch')
+        plt.ylabel('Loss')
+        plt.title('Loss over Epochs')
+        plt.legend()
+        plt.savefig(f'./results/{setting}/loss_plot.png')
+        plt.close()

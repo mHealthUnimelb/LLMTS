@@ -733,7 +733,7 @@ class UEAloader(Dataset):
 
 class Dataset_ECG(Dataset):
 
-    def __init__(self, root_path, flag='train', seq_len=2500, label_len=1, pred_len=1, scale=True, percent=100):
+    def __init__(self, root_path, flag='train', seq_len=2500):
         # load data
         if flag == "train":
             self.x_data = pd.read_pickle(root_path + "x_train.pkl")
@@ -750,6 +750,11 @@ class Dataset_ECG(Dataset):
 
         # segment data
         self.segment_data(seq_len, strategy="discard")
+        # print("x_data shape: ", self.x_data.shape)
+        if flag == "test":
+            unique, counts = np.unique(self.y_data, return_counts=True)
+            test_distribution = dict(zip(unique, counts))
+            print("Test Set Class Distribution:", test_distribution)
 
     def segment_data(self, seq_len, strategy="discard"):
         num_samples, num_channels, total_length = self.x_data.shape
@@ -767,9 +772,9 @@ class Dataset_ECG(Dataset):
             self.y_data = np.pad(self.y_data, ((0, 0), (0, num_segments * seq_len - total_length)), mode='constant',
                                  constant_values=0)
 
-        # reshape x_data to (num_samples * num_segments, num_channels, seq_len)
+        # reshape x_data to (num_samples * num_segments, seq_len, num_channels)
         self.x_data = self.x_data.reshape(num_samples, num_channels, num_segments, seq_len).transpose(0, 2, 3,
-                                                                                                      1).reshape(
+                                                                                                      1 ).reshape(
             num_samples * num_segments, seq_len, num_channels)
 
         # reshape y_data to (num_samples * num_segments, 1)

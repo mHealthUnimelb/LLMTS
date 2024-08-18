@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name="calf"
 #SBATCH --account="punim2341"
-#SBATCH --partition=gpu-a100
+#SBATCH --partition=gpu-a100-short
 #SBATCH --nodes=1
 #SBATCH --time=1:00:00
 #SBATCH --gres=gpu:1
@@ -15,11 +15,9 @@ module load Anaconda3/2022.10
 eval "$(conda shell.bash hook)"
 conda activate calf
 
-seq_len=96
+seq_len=2500
 model=CALF
-
-for pred_len in 720
-do
+pred_len=0
 
 python run.py \
     --root_path ./datasets/ECG/ \
@@ -49,9 +47,6 @@ python run.py \
     --lora_dropout 0.1 \
     --patience 10 \
     --task_loss ce
-
-echo '====================================================================================================================='
-done
 
 ##DO NOT ADD/EDIT BEYOND THIS LINE##
 ##Job monitor command to list the resource usage
