@@ -11,7 +11,11 @@ import warnings
 import numpy as np
 import pdb
 import matplotlib.pyplot as plt
-from sklearn.metrics import confusion_matrix, roc_auc_score, ConfusionMatrixDisplay
+from torchmetrics.classification import MulticlassAveragePrecision
+from sklearn.metrics import confusion_matrix, average_precision_score, ConfusionMatrixDisplay
+from sklearn.utils.class_weight import compute_class_weight
+import copy
+
 
 warnings.filterwarnings('ignore')
 
@@ -25,9 +29,9 @@ class Exp_Classification(Exp_Basic):
         self.train_losses = []
         self.vali_losses = []
         self.test_losses = []
-        self.train_roc_aucs = []
-        self.vali_roc_aucs = []
-        self.test_roc_aucs = []
+        self.train_auprcs = []
+        self.vali_auprcs = []
+        self.test_auprcs = []
 
     def _build_model(self):
         # model input depends on data
@@ -36,8 +40,12 @@ class Exp_Classification(Exp_Basic):
         test_data, test_loader = self._get_data(flag='test')
         self.args.seq_len = max(train_data.max_seq_len, test_data.max_seq_len)
         self.args.pred_len = 0
-        self.args.enc_in = train_data.feature_df.shape[1]
+        self.args.enc_in = train_data.feature_dim
         self.args.num_class = len(train_data.class_names)
+        # compute class weights
+        self.train_class_weights = self._calculate_class_weights(train_data.y_data, self.args.num_class)
+        self.vali_class_weights = self._calculate_class_weights(vali_data.y_data, self.args.num_class)
+        self.test_class_weights = self._calculate_class_weights(test_data.y_data, self.args.num_class)
         # model init
         model = self.model_dict[self.args.model].Model(self.args, self.device).float()
         if self.args.use_multi_gpu and self.args.use_gpu:
@@ -59,18 +67,40 @@ class Exp_Classification(Exp_Basic):
 
         return model_optim, loss_optim
 
+    def _calculate_class_weights(self, y_true, num_classes):
+        print(f"y_true label: {np.unique(y_true)}, type: {type(y_true)}")
+        print(f"num_classes label: {np.arange(num_classes)}, type: {type(np.arange(num_classes))}")
+        y_true_copy = copy.deepcopy(y_true)
+        y_true_copy = y_true_copy.numpy()
+        print(f"y_true_copy label: {np.unique(y_true_copy)}, type: {type(y_true_copy)}")
+        class_weights = compute_class_weight(class_weight='balanced', classes=np.unique(y_true_copy), y=y_true_copy)
+        return torch.tensor(class_weights, dtype=torch.float).to(self.device)
+
     def _select_criterion(self):
+        # # extract labels from the training data to compute class weights
+        # train_data, _ = self._get_data(flag='train')
+        # y_train = train_data.y_data
+        #
+        # # compute class weights
+        # class_weights = self._calculate_class_weights(y_train, self.args.num_class)
+        class_weights = self.train_class_weights
+
         criterion = cmLoss(self.args.feature_loss,
                            self.args.output_loss,
                            self.args.task_loss,
                            self.args.task_name,
                            self.args.feature_w,
                            self.args.output_w,
-                           self.args.task_w)
+                           self.args.task_w,
+                           class_weights=class_weights)
         return criterion
 
-    def _select_vali_criterion(self):
-        return nn.CrossEntropyLoss()
+    def _select_vali_criterion(self, class_weights):
+        return nn.CrossEntropyLoss(weight=class_weights)
+
+    def _select_metric(self, probs, target):
+        metric = MulticlassAveragePrecision(num_classes=self.args.num_class, average="weighted")
+        return metric(probs, target)
 
     def train(self, setting):
         train_data, train_loader = self._get_data(flag='train')
@@ -116,7 +146,7 @@ class Exp_Classification(Exp_Basic):
                 loss = criterion(outputs, label.long().squeeze(-1))
                 train_loss.append(loss.item())
 
-                train_preds.append(outputs["outputs_time"].detach())
+                train_preds.append(outputs["outputs_time"])
                 train_trues.append(label)
 
                 if (i + 1) % 100 == 0:
@@ -140,26 +170,27 @@ class Exp_Classification(Exp_Basic):
             train_preds = torch.cat(train_preds, 0)
             train_trues = torch.cat(train_trues, 0)
             train_probs = torch.nn.functional.softmax(train_preds)
-            train_predictions = torch.argmax(train_probs, dim=1).cpu().numpy()
-            train_trues = train_trues.flatten().cpu().numpy()
-            train_accuracy = cal_accuracy(train_predictions, train_trues)
+            train_predictions = torch.argmax(train_probs, dim=1)
+            train_trues = train_trues.flatten()
+            # calculate AUPRC
+            train_auprc = self._select_metric(train_probs, train_trues)
+            correct = (train_predictions == train_trues).float()
+            train_accuracy = correct.mean().item()
+            self.train_auprcs.append(train_auprc)
             self.train_accuracies.append(train_accuracy)
-            # calculate roc_auc score
-            train_roc_auc = roc_auc_score(train_trues, train_probs.cpu().numpy(), multi_class='ovr', average='weighted', labels=list(range(self.args.num_class)))
-            self.train_roc_aucs.append(train_roc_auc)
 
-            vali_loss, vali_accuracy, vali_roc_auc = self.vali(vali_data, vali_loader, self._select_vali_criterion())
+            vali_loss, vali_accuracy, vali_auprc = self.vali(vali_data, vali_loader, self._select_vali_criterion(self.vali_class_weights))
             self.vali_losses.append(vali_loss)
             self.vali_accuracies.append(vali_accuracy)
-            self.vali_roc_aucs.append(vali_roc_auc)
-            test_loss, test_accuracy, test_roc_auc = self.vali(test_data, test_loader, self._select_vali_criterion())
+            self.vali_auprcs.append(vali_auprc)
+            test_loss, test_accuracy, test_auprc = self.vali(test_data, test_loader, self._select_vali_criterion(self.test_class_weights))
             self.test_losses.append(test_loss)
             self.test_accuracies.append(test_accuracy)
-            self.test_roc_aucs.append(test_roc_auc)
+            self.test_auprcs.append(test_auprc)
 
             print(
-                "Epoch: {0}, Steps: {1} | Train Loss: {2:.3f} Train Acc: {3:.3f} Train ROC AUC: {4:.3f} Vali Loss: {5:.3f} Vali Acc: {6:.3f} Vali ROC AUC: {7:.3f} Test Loss: {8:.3f} Test Acc: {9:.3f} Test ROC AUC: {10:.3f}"
-                .format(epoch + 1, train_steps, train_loss, train_accuracy, train_roc_auc, vali_loss, vali_accuracy, vali_roc_auc, test_loss, test_accuracy, test_roc_auc))
+                "Epoch: {0}, Steps: {1} | Train Loss: {2:.3f} Train Acc: {3:.3f} Train AUPRC: {4:.3f} Vali Loss: {5:.3f} Vali Acc: {6:.3f} Vali AUPRC: {7:.3f} Test Loss: {8:.3f} Test Acc: {9:.3f} Test AUPRC: {10:.3f}"
+                .format(epoch + 1, train_steps, train_loss, train_accuracy, train_auprc, vali_loss, vali_accuracy, vali_auprc, test_loss, test_accuracy, test_auprc))
 
             # if self.args.cos:
             #     scheduler.step()
@@ -197,9 +228,9 @@ class Exp_Classification(Exp_Basic):
 
                 outputs = self.model(batch_x)["outputs_time"]
 
-                pred = outputs.detach().cpu()
-                loss = criterion(pred, label.long().squeeze().cpu())
-                total_loss.append(loss)
+                pred = outputs.detach()
+                loss = criterion(pred, label.long().squeeze(-1))
+                total_loss.append(loss.cpu().numpy())
 
                 preds.append(outputs.detach())
                 trues.append(label)
@@ -212,16 +243,17 @@ class Exp_Classification(Exp_Basic):
         print('test shape:', preds.shape, trues.shape)
         probs = torch.nn.functional.softmax(preds)  # (total_samples, num_classes) est. prob. for each class and sample
         predictions = torch.argmax(probs, dim=1).cpu().numpy()  # (total_samples,) int class index for each sample
-        trues = trues.flatten().cpu().numpy()
+        trues = trues.flatten()
+        auprc = self._select_metric(probs, trues)
+        trues = trues.cpu().numpy()
         accuracy = cal_accuracy(predictions, trues)
-        roc_auc = roc_auc_score(trues, probs.cpu().numpy(), multi_class='ovr', average='weighted', labels=list(range(self.args.num_class)))
 
         # Saving true labels and predictions
         np.savetxt('./results/vali_trues.txt', trues, fmt='%d')
         np.savetxt('./results/vali_predictions.txt', predictions, fmt='%d')
 
         self.model.train()
-        return total_loss, accuracy, roc_auc
+        return total_loss, accuracy, auprc
 
     def test(self, setting, test=0):
         test_data, test_loader = self._get_data(flag='test')
@@ -253,9 +285,10 @@ class Exp_Classification(Exp_Basic):
 
         probs = torch.nn.functional.softmax(preds)  # (total_samples, num_classes) est. prob. for each class and sample
         predictions = torch.argmax(probs, dim=1).cpu().numpy()  # (total_samples,) int class index for each sample
-        trues = trues.flatten().cpu().numpy()
+        trues = trues.flatten()
+        auprc = self._select_metric(probs, trues)
+        trues = trues.cpu().numpy()
         accuracy = cal_accuracy(predictions, trues)
-        roc_auc = roc_auc_score(trues, probs.cpu().numpy(), multi_class='ovr', average='weighted', labels=list(range(self.args.num_class)))
 
         # result save
         folder_path = './results/' + setting + '/'
@@ -264,19 +297,20 @@ class Exp_Classification(Exp_Basic):
 
         # Compute Confusion Matrix
         cm = confusion_matrix(trues, predictions)
-        disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_label=list(range(self.args.num_class)))
+        # disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=list(range(self.args.num_class)))
+        disp = ConfusionMatrixDisplay(confusion_matrix=cm)
         disp.plot()
         plt.title(f'Confusion Matrix for {setting}')
         plt.savefig(f'./results/{setting}/confusion_matrix.png')
         plt.close()
 
         print('accuracy:{}'.format(accuracy))
-        print('ROC AUC Score:{}'.format(roc_auc))
+        print('AUPRC:{}'.format(auprc))
         file_name = 'result_classification.txt'
         f = open(os.path.join(folder_path, file_name), 'a')
         f.write(setting + "  \n")
         f.write('accuracy:{}'.format(accuracy))
-        f.write('ROC AUC Score:{}'.format(roc_auc))
+        f.write('AUPRC:{}'.format(auprc))
         f.write('\n')
         f.write('\n')
         f.close()

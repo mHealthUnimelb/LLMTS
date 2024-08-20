@@ -746,49 +746,54 @@ class Dataset_ECG(Dataset):
             self.y_data = pd.read_pickle(root_path + "state_test.pkl")
         self.class_names = ['AFIB', 'AFL', 'J', 'N']
         self.max_seq_len = seq_len
-        self.feature_df = self.x_data
+        self.feature_dim = self.x_data.shape[1]
 
-        # segment data
-        self.segment_data(seq_len, strategy="discard")
-        # print("x_data shape: ", self.x_data.shape)
-        if flag == "test":
-            unique, counts = np.unique(self.y_data, return_counts=True)
-            test_distribution = dict(zip(unique, counts))
-            print("Test Set Class Distribution:", test_distribution)
+        # # segment data
+        # self.segment_data(seq_len, strategy="discard")
+        # # print("x_data shape: ", self.x_data.shape)
+        # if flag == "test":
+        #     unique, counts = np.unique(self.y_data, return_counts=True)
+        #     test_distribution = dict(zip(unique, counts))
+        #     print("Test Set Class Distribution:", test_distribution)
 
-    def segment_data(self, seq_len, strategy="discard"):
-        num_samples, num_channels, total_length = self.x_data.shape
+        # Convert to tensors
+        self.x_data = self.x_data.transpose(0, 2, 1)
+        self.x_data = torch.from_numpy(self.x_data)
+        self.y_data = torch.tensor(self.y_data, dtype=torch.long)
 
-        if strategy == "discard":
-            # discard the last segment if it is shorter than seq_len
-            num_segments = total_length // seq_len
-            self.x_data = self.x_data[:, :, :num_segments * seq_len]
-            self.y_data = self.y_data[:, :num_segments * seq_len]
-        elif strategy == "pad":
-            # pad the last segment if it is shorter than seq_len
-            num_segments = np.ceil(total_length / seq_len).astype(int)
-            self.x_data = np.pad(self.x_data, ((0, 0), (0, 0), (0, num_segments * seq_len - total_length)),
-                                 mode='constant', constant_values=0)
-            self.y_data = np.pad(self.y_data, ((0, 0), (0, num_segments * seq_len - total_length)), mode='constant',
-                                 constant_values=0)
-
-        # reshape x_data to (num_samples * num_segments, seq_len, num_channels)
-        self.x_data = self.x_data.reshape(num_samples, num_channels, num_segments, seq_len).transpose(0, 2, 3,
-                                                                                                      1 ).reshape(
-            num_samples * num_segments, seq_len, num_channels)
-
-        # reshape y_data to (num_samples * num_segments, 1)
-        self.y_data = self.y_data.reshape(num_samples, num_segments, seq_len)
-        # compute the mode for each segment, find the most common label
-        # mode_labels = np.argmax(np.sum(self.y_data, axis=2), axis=1)
-        mode_labels = scipy.stats.mode(self.y_data, axis=2).mode
-        self.y_data = mode_labels.reshape(num_samples * num_segments, 1)
-
-        # reshape y_data to (num_samples * num_segments, 1)
-        # self.y_data = self.y_data.reshape((-1, 1))
-        # reshape y_data to (num_samples * num_segments, seq_len)
-        # self.y_data = self.y_data.reshape(num_samples, num_segments, seq_len).reshape(num_samples * num_segments,
-        #                                                                               seq_len)
+    # def segment_data(self, seq_len, strategy="discard"):
+    #     num_samples, num_channels, total_length = self.x_data.shape
+    #
+    #     if strategy == "discard":
+    #         # discard the last segment if it is shorter than seq_len
+    #         num_segments = total_length // seq_len
+    #         self.x_data = self.x_data[:, :, :num_segments * seq_len]
+    #         self.y_data = self.y_data[:, :num_segments * seq_len]
+    #     elif strategy == "pad":
+    #         # pad the last segment if it is shorter than seq_len
+    #         num_segments = np.ceil(total_length / seq_len).astype(int)
+    #         self.x_data = np.pad(self.x_data, ((0, 0), (0, 0), (0, num_segments * seq_len - total_length)),
+    #                              mode='constant', constant_values=0)
+    #         self.y_data = np.pad(self.y_data, ((0, 0), (0, num_segments * seq_len - total_length)), mode='constant',
+    #                              constant_values=0)
+    #
+    #     # reshape x_data to (num_samples * num_segments, seq_len, num_channels)
+    #     self.x_data = self.x_data.reshape(num_samples, num_channels, num_segments, seq_len).transpose(0, 2, 3,
+    #                                                                                                   1 ).reshape(
+    #         num_samples * num_segments, seq_len, num_channels)
+    #
+    #     # reshape y_data to (num_samples * num_segments, 1)
+    #     self.y_data = self.y_data.reshape(num_samples, num_segments, seq_len)
+    #     # compute the mode for each segment, find the most common label
+    #     # mode_labels = np.argmax(np.sum(self.y_data, axis=2), axis=1)
+    #     mode_labels = scipy.stats.mode(self.y_data, axis=2).mode
+    #     self.y_data = mode_labels.reshape(num_samples * num_segments)
+    #
+    #     # reshape y_data to (num_samples * num_segments, 1)
+    #     # self.y_data = self.y_data.reshape((-1, 1))
+    #     # reshape y_data to (num_samples * num_segments, seq_len)
+    #     # self.y_data = self.y_data.reshape(num_samples, num_segments, seq_len).reshape(num_samples * num_segments,
+    #     #                                                                               seq_len)
 
     def __getitem__(self, index):
         return self.x_data[index], self.y_data[index]

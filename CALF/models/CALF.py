@@ -89,6 +89,9 @@ class Model(nn.Module):
         if self.task_name == 'long_term_forecast' or self.task_name == 'short_term_forecast':
             self.out_layer = nn.Linear(configs.d_model, configs.pred_len)
         elif self.task_name == 'classification':
+            print("d_model: ", configs.d_model)
+            print("enc_in: ", configs.enc_in)
+            print("out_layer input: ", configs.d_model * configs.enc_in) # 1920000
             self.out_layer = nn.Linear(configs.d_model * configs.enc_in, configs.num_class)
         elif self.task_name == 'imputation':
             self.out_layer = nn.Linear(configs.d_model, configs.seq_len)
@@ -143,6 +146,8 @@ class Model(nn.Module):
     def classification(self, x):
         B, L, M = x.shape
 
+        print("x shape: ", x.shape) # (256, 2500, 2)
+
         x = rearrange(x, 'b l m -> b m l')
 
         outputs_time1, outputs_text1 = self.in_layer(x)
@@ -158,9 +163,11 @@ class Model(nn.Module):
         intermidiate_feat_text = tuple(
             [self.text_proj[idx](feat) for idx, feat in enumerate(list(intermidiate_feat_text))])
 
+        print("outputs_time shape: ", outputs_time.shape)
         outputs_time = outputs_time.reshape(B, -1)
         outputs_text = outputs_text.reshape(B, -1)
 
+        print("outputs_time shape: ", outputs_time.shape)
         outputs_time = self.out_layer(outputs_time)
         outputs_text = self.out_layer(outputs_text)
 

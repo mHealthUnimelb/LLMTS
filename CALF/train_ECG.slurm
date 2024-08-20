@@ -3,7 +3,7 @@
 #SBATCH --account="punim2341"
 #SBATCH --partition=gpu-a100-short
 #SBATCH --nodes=1
-#SBATCH --time=1:00:00
+#SBATCH --time=00:10:00
 #SBATCH --gres=gpu:1
 #SBATCH --ntasks=4
 #SBATCH --ntasks-per-node=4
@@ -30,7 +30,7 @@ python run.py \
     --label_len 0 \
     --pred_len $pred_len \
     --batch_size 256 \
-    --learning_rate 0.0005 \
+    --learning_rate 0.0000005 \
     --lradj type1 \
     --train_epochs 100 \
     --d_model 768 \

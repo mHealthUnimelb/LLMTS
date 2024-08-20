@@ -18,7 +18,7 @@ loss_dict = {
 
 
 class cmLoss(nn.Module):
-    def __init__(self, feature_loss, output_loss, task_loss, task_name, feature_w=0.01, output_w=1.0, task_w=1.0):
+    def __init__(self, feature_loss, output_loss, task_loss, task_name, feature_w=0.01, output_w=1.0, task_w=1.0, class_weights=None):
         super(cmLoss, self).__init__()
         self.task_w = task_w
         self.output_w = output_w
@@ -26,7 +26,10 @@ class cmLoss(nn.Module):
 
         self.feature_loss = loss_dict[feature_loss]
         self.output_loss = loss_dict[output_loss]
-        self.task_loss = loss_dict[task_loss]
+        if task_name == "classification" and class_weights is not None:
+            self.task_loss = nn.CrossEntropyLoss(weight=class_weights)
+        else:
+            self.task_loss = loss_dict[task_loss]
         
         self.task_name = task_name
 
