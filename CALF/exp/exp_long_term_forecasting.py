@@ -69,12 +69,22 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(model_optim, T_max=self.args.tmax, eta_min=1e-8)
 
+        # for name, _ in self.model.named_parameters():
+        #     print(name)
+
+        # monitored_layer_name = "gpt2.base_model.model.h.0.attn.c_attn.base_layer.weight"
+
         for epoch in range(self.args.train_epochs):
             iter_count = 0
             train_loss = []
 
             self.model.train()
             epoch_time = time.time()
+
+            # Store initial weights before applying LoRA
+            initial_weights = {name: param.clone() for name, param in self.model.named_parameters() if
+                               param.requires_grad}
+
             for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(train_loader):
                 iter_count += 1
                 model_optim.zero_grad()
@@ -101,7 +111,18 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 model_optim.step()
                 loss_optim.step()
 
+                # monitored_layer = dict(self.model.named_parameters())[monitored_layer_name]
+
             print("Epoch: {} cost time: {}".format(epoch + 1, time.time() - epoch_time))
+
+            # print(f"Epoch {epoch + 1}, After update: {monitored_layer.data}")
+            for name, param in self.model.named_parameters():
+                if name in initial_weights:
+                    if not torch.equal(param, initial_weights[name]):
+                        print(f"Weights changed in layer: {name}\n, original: {initial_weights[name]}\n, changed: {param}\n")
+                    else:
+                        print(f"No change in layer: {name}")
+
             train_loss = np.average(train_loss)
 
             vali_loss = self.vali(vali_data, vali_loader, criterion)

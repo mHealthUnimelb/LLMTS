@@ -1,17 +1,13 @@
 #!/bin/bash
 #SBATCH --job-name="calf"
 #SBATCH --account="punim2341"
-#SBATCH --partition=gpu-a100
+#SBATCH --partition=gpu-a100-short
 #SBATCH --nodes=1
-#SBATCH --time=14:00:00
-#SBATCH --gres=gpu:4
+#SBATCH --time=04:00:00
+#SBATCH --gres=gpu:1
 #SBATCH --ntasks=4
-
-# check that the script is lanuched with sbatch
-if ["x$SLURM_JOB_ID" == "x" ]; then
-    echo "You need to submit your job to the queuing system with sbatch"
-    exit 1
-fi
+#SBATCH --ntasks-per-node=4
+#SBATCH --mem=60G
 
 module purge
 module load foss/2022a
@@ -22,10 +18,9 @@ conda activate calf
 seq_len=96
 model=CALF
 
-for target_data in ETTm1 ETTm2
+
+for pred_len in 720
 do
-    for pred_len in 96 192 336 720
-        do
 
 python run.py \
     --root_path ./datasets/ETT-small/ \
@@ -38,9 +33,9 @@ python run.py \
     --label_len 0 \
     --pred_len $pred_len \
     --batch_size 256 \
-    --learning_rate 0.001 \
+    --learning_rate 0.0005 \
     --lradj type1 \
-    --train_epochs 5 \
+    --train_epochs 100 \
     --d_model 768 \
     --n_heads 4 \
     --d_ff 768 \
@@ -53,12 +48,9 @@ python run.py \
     --r 8 \
     --lora_alpha 32 \
     --lora_dropout 0.1 \
-    --patience 1 \
-    --zero_shot 1 \
-    --target_data ETTm2 \
+    --patience 10
 
 echo '====================================================================================================================='
-done
 done
 
 ##DO NOT ADD/EDIT BEYOND THIS LINE##

@@ -79,4 +79,7 @@ class cmLoss(nn.Module):
             task_loss = self.task_loss(outputs_time, batch_y)
 
         total_loss = self.task_w * task_loss + self.output_w * output_loss + self.feature_w * feature_loss
+        print(f"feature loss: {feature_loss}, feature weight: {self.feature_w}")
+        print(f"output loss: {output_loss}, output weight: {self.output_w}")
+        print(f"task loss: {task_loss}, task weight: {self.task_w}")
         return total_loss

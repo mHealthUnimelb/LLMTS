@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH --job-name="calf"
 #SBATCH --account="punim2341"
-#BATCH --p gpu-a100
-#BATCH --time=04:00:00
+#BATCH --p gpu-a100-short
+#BATCH --time=00:30:00
 #BATCH --gres=gpu:1
 
 # check that the script is lanuched with sbatch

@@ -3,11 +3,11 @@
 #SBATCH --account="punim2341"
 #SBATCH --partition=gpu-a100-short
 #SBATCH --nodes=1
-#SBATCH --time=00:10:00
+#SBATCH --time=04:00:00
 #SBATCH --gres=gpu:1
 #SBATCH --ntasks=4
 #SBATCH --ntasks-per-node=4
-#SBATCH --mem=40G
+#SBATCH --mem=60G
 
 module purge
 module load foss/2022a
@@ -29,8 +29,8 @@ python run.py \
     --seq_len $seq_len \
     --label_len 0 \
     --pred_len $pred_len \
-    --batch_size 256 \
-    --learning_rate 0.0000005 \
+    --batch_size 64 \
+    --learning_rate 0.0005 \
     --lradj type1 \
     --train_epochs 100 \
     --d_model 768 \
@@ -46,7 +46,11 @@ python run.py \
     --lora_alpha 32 \
     --lora_dropout 0.1 \
     --patience 10 \
-    --task_loss ce
+    --task_loss ce \
+    --word_embedding_path wte_pca_700.pt \
+    --task_w 1.0 \
+    --feature_w 0.01 \
+    --output_w 1.0
 
 ##DO NOT ADD/EDIT BEYOND THIS LINE##
 ##Job monitor command to list the resource usage

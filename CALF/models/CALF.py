@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from einops import rearrange
-from peft import LoraConfig, TaskType
+from peft import LoraConfig, TaskType, get_peft_model
 from models.GPT2_arch import AccustumGPT2Model
 
 
@@ -62,9 +62,10 @@ class Model(nn.Module):
 
         self.gpt2.h = self.gpt2.h[:configs.gpt_layers]
         self.gpt2_text.h = self.gpt2_text.h[:configs.gpt_layers]
-        # self.gpt2 = get_peft_model(self.gpt2, peft_config)
+        self.gpt2 = get_peft_model(self.gpt2, peft_config)
 
         word_embedding = torch.tensor(torch.load(configs.word_embedding_path)).to(device=device)
+        print("word_embedding_path: ", configs.word_embedding_path)
 
         for i, (name, param) in enumerate(self.gpt2.named_parameters()):
             if 'ln' in name or 'wpe' in name or 'lora' in name:
@@ -89,9 +90,6 @@ class Model(nn.Module):
         if self.task_name == 'long_term_forecast' or self.task_name == 'short_term_forecast':
             self.out_layer = nn.Linear(configs.d_model, configs.pred_len)
         elif self.task_name == 'classification':
-            print("d_model: ", configs.d_model)
-            print("enc_in: ", configs.enc_in)
-            print("out_layer input: ", configs.d_model * configs.enc_in) # 1920000
             self.out_layer = nn.Linear(configs.d_model * configs.enc_in, configs.num_class)
         elif self.task_name == 'imputation':
             self.out_layer = nn.Linear(configs.d_model, configs.seq_len)
@@ -146,7 +144,7 @@ class Model(nn.Module):
     def classification(self, x):
         B, L, M = x.shape
 
-        print("x shape: ", x.shape) # (256, 2500, 2)
+        # print("x shape: ", x.shape) # (256, 2500, 2)
 
         x = rearrange(x, 'b l m -> b m l')
 
@@ -163,11 +161,9 @@ class Model(nn.Module):
         intermidiate_feat_text = tuple(
             [self.text_proj[idx](feat) for idx, feat in enumerate(list(intermidiate_feat_text))])
 
-        print("outputs_time shape: ", outputs_time.shape)
         outputs_time = outputs_time.reshape(B, -1)
         outputs_text = outputs_text.reshape(B, -1)
 
-        print("outputs_time shape: ", outputs_time.shape)
         outputs_time = self.out_layer(outputs_time)
         outputs_text = self.out_layer(outputs_text)
 

@@ -12,7 +12,7 @@ import numpy as np
 import pdb
 import matplotlib.pyplot as plt
 from torchmetrics.classification import MulticlassAveragePrecision
-from sklearn.metrics import confusion_matrix, average_precision_score, ConfusionMatrixDisplay
+from sklearn.metrics import confusion_matrix, average_precision_score, ConfusionMatrixDisplay, precision_recall_curve, auc
 from sklearn.utils.class_weight import compute_class_weight
 import copy
 
@@ -42,10 +42,6 @@ class Exp_Classification(Exp_Basic):
         self.args.pred_len = 0
         self.args.enc_in = train_data.feature_dim
         self.args.num_class = len(train_data.class_names)
-        # compute class weights
-        self.train_class_weights = self._calculate_class_weights(train_data.y_data, self.args.num_class)
-        self.vali_class_weights = self._calculate_class_weights(vali_data.y_data, self.args.num_class)
-        self.test_class_weights = self._calculate_class_weights(test_data.y_data, self.args.num_class)
         # model init
         model = self.model_dict[self.args.model].Model(self.args, self.device).float()
         if self.args.use_multi_gpu and self.args.use_gpu:
@@ -83,7 +79,7 @@ class Exp_Classification(Exp_Basic):
         #
         # # compute class weights
         # class_weights = self._calculate_class_weights(y_train, self.args.num_class)
-        class_weights = self.train_class_weights
+        # class_weights = self.train_class_weights
 
         criterion = cmLoss(self.args.feature_loss,
                            self.args.output_loss,
@@ -91,16 +87,32 @@ class Exp_Classification(Exp_Basic):
                            self.args.task_name,
                            self.args.feature_w,
                            self.args.output_w,
-                           self.args.task_w,
-                           class_weights=class_weights)
+                           self.args.task_w)
         return criterion
 
-    def _select_vali_criterion(self, class_weights):
-        return nn.CrossEntropyLoss(weight=class_weights)
+    def _select_vali_criterion(self):
+        return nn.CrossEntropyLoss()
 
     def _select_metric(self, probs, target):
-        metric = MulticlassAveragePrecision(num_classes=self.args.num_class, average="weighted")
+        metric = MulticlassAveragePrecision(num_classes=self.args.num_class, average="macro")
         return metric(probs, target)
+
+    # def _select_metric(self, probs, target):
+    #     probs = probs.detach().cpu().numpy()
+    #     target = target.detach().cpu().numpy()
+    #
+    #     # Initialize list to store AUPRC for each class
+    #     auprcs = []
+    #
+    #     # Compute AUPRC for each class
+    #     for i in range(self.args.num_class):
+    #         # For class `i`, the true labels are `1` if the actual label is `i`, else `0`
+    #         precision, recall, _ = precision_recall_curve(target == i, probs[:, i])
+    #         auprc = auc(recall, precision)
+    #         auprcs.append(auprc)
+    #
+    #     # Return the average AUPRC across all classes
+    #     return np.mean(auprcs)
 
     def train(self, setting):
         train_data, train_loader = self._get_data(flag='train')
@@ -121,6 +133,8 @@ class Exp_Classification(Exp_Basic):
 
         # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(model_optim, T_max=self.args.tmax, eta_min=1e-8)
 
+        # monitored_layer_name = "gpt2.h.0.attn.c_attn.weight"
+
         for epoch in range(self.args.train_epochs):
             iter_count = 0
             train_loss = []
@@ -130,6 +144,10 @@ class Exp_Classification(Exp_Basic):
             self.model.train()
             epoch_time = time.time()
 
+            # Store initial weights before applying LoRA
+            initial_weights = {name: param.clone() for name, param in self.model.named_parameters() if
+                               param.requires_grad}
+
             for i, (batch_x, label) in enumerate(train_loader):
                 iter_count += 1
                 model_optim.zero_grad()
@@ -138,8 +156,8 @@ class Exp_Classification(Exp_Basic):
                 batch_x = batch_x.float().to(self.device)
                 label = label.to(self.device)
 
-                print("batch_x shape: ", batch_x.shape)
-                print("label shape: ", label.shape)
+                # print("batch_x shape: ", batch_x.shape)
+                # print("label shape: ", label.shape)
 
                 outputs = self.model(batch_x)
 
@@ -162,7 +180,19 @@ class Exp_Classification(Exp_Basic):
                 model_optim.step()
                 loss_optim.step()
 
+                # monitored_layer = dict(self.model.named_parameters())[monitored_layer_name]
+
+            # Compare weights after applying LoRA
+            for name, param in self.model.named_parameters():
+                if name in initial_weights:
+                    if not torch.equal(param, initial_weights[name]):
+                        print(f"Weights changed in layer: {name}")
+                    else:
+                        print(f"No change in layer: {name}")
+
             print("Epoch: {} cost time: {}".format(epoch + 1, time.time() - epoch_time))
+
+            # print(f"Epoch {epoch + 1}, After update: {monitored_layer.data}")
 
             train_loss = np.average(train_loss)
             self.train_losses.append(train_loss)
@@ -174,16 +204,18 @@ class Exp_Classification(Exp_Basic):
             train_trues = train_trues.flatten()
             # calculate AUPRC
             train_auprc = self._select_metric(train_probs, train_trues)
+            # precision, recall, thresholds = precision_recall_curve(train_trues.cpu().numpy(), y_score)
+
             correct = (train_predictions == train_trues).float()
             train_accuracy = correct.mean().item()
             self.train_auprcs.append(train_auprc)
             self.train_accuracies.append(train_accuracy)
 
-            vali_loss, vali_accuracy, vali_auprc = self.vali(vali_data, vali_loader, self._select_vali_criterion(self.vali_class_weights))
+            vali_loss, vali_accuracy, vali_auprc = self.vali(vali_data, vali_loader, self._select_vali_criterion())
             self.vali_losses.append(vali_loss)
             self.vali_accuracies.append(vali_accuracy)
             self.vali_auprcs.append(vali_auprc)
-            test_loss, test_accuracy, test_auprc = self.vali(test_data, test_loader, self._select_vali_criterion(self.test_class_weights))
+            test_loss, test_accuracy, test_auprc = self.vali(test_data, test_loader, self._select_vali_criterion())
             self.test_losses.append(test_loss)
             self.test_accuracies.append(test_accuracy)
             self.test_auprcs.append(test_auprc)
@@ -198,8 +230,8 @@ class Exp_Classification(Exp_Basic):
             # else:
             #     adjust_learning_rate(model_optim, epoch + 1, self.args)
 
-            # early_stopping(-vali_accuracy, self.model, path)
-            early_stopping(vali_loss, self.model, path)
+            early_stopping(-vali_accuracy, self.model, path)
+            # early_stopping(vali_loss, self.model, path)
             if early_stopping.early_stop:
                 print("Early stopping")
                 break
@@ -240,7 +272,7 @@ class Exp_Classification(Exp_Basic):
         preds = torch.cat(preds, 0)
         trues = torch.cat(trues, 0)
         # print(f'{vali_data.x_data.shape} shape: {preds.shape} {trues.shape}')
-        print('test shape:', preds.shape, trues.shape)
+        # print('test shape:', preds.shape, trues.shape)
         probs = torch.nn.functional.softmax(preds)  # (total_samples, num_classes) est. prob. for each class and sample
         predictions = torch.argmax(probs, dim=1).cpu().numpy()  # (total_samples,) int class index for each sample
         trues = trues.flatten()
@@ -259,8 +291,8 @@ class Exp_Classification(Exp_Basic):
         test_data, test_loader = self._get_data(flag='test')
         if test:
             print('loading model')
-            # self.model.load_state_dict(torch.load(os.path.join('./checkpoints/' + setting, 'checkpoint.pth')))
-            self.model.load_state_dict(torch.load('./checkpoints/classification_ECG_CALF_2500__CALF_ECG_ftM_sl2500_ll0_pl0_dm768_nh4_el2_dl1_df768_fc1_ebtimeF_dtTrue_test_gpt6_0/checkpoint.pth'))
+            self.model.load_state_dict(torch.load(os.path.join('./checkpoints/' + setting, 'checkpoint.pth')))
+            # self.model.load_state_dict(torch.load('./checkpoints/classification_ECG_CALF_2500__CALF_ECG_ftM_sl2500_ll0_pl0_dm768_nh4_el2_dl1_df768_fc1_ebtimeF_dtTrue_test_gpt6_0/checkpoint.pth'))
 
         preds = []
         trues = []
@@ -281,7 +313,7 @@ class Exp_Classification(Exp_Basic):
 
         preds = torch.cat(preds, 0)
         trues = torch.cat(trues, 0)
-        print('test shape:', preds.shape, trues.shape)
+        # print('test shape:', preds.shape, trues.shape)
 
         probs = torch.nn.functional.softmax(preds)  # (total_samples, num_classes) est. prob. for each class and sample
         predictions = torch.argmax(probs, dim=1).cpu().numpy()  # (total_samples,) int class index for each sample
@@ -310,6 +342,7 @@ class Exp_Classification(Exp_Basic):
         f = open(os.path.join(folder_path, file_name), 'a')
         f.write(setting + "  \n")
         f.write('accuracy:{}'.format(accuracy))
+        f.write('\n')
         f.write('AUPRC:{}'.format(auprc))
         f.write('\n')
         f.write('\n')
