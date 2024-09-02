@@ -58,7 +58,10 @@ def data_provider(args, flag, vali=False):
         drop_last = False
         data_set = Data(
             root_path=args.root_path,
+            data_path=args.data_path,
             flag=flag,
+            seq_len=args.seq_len,
+            training_flag=args.is_training
         )
         data_loader = DataLoader(
             data_set,

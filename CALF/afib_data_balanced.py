@@ -102,6 +102,14 @@ class AFDB(object):
         # val_state = all_labels[n_train:n_val]
         # test_state = all_labels[n_val:]
 
+        # n_train = int(0.8 * len(all_signals))
+        # train_data = all_signals[:n_train]
+        # test_data = all_signals[n_train:]
+        # train_state = all_labels[:n_train]
+        # test_state = all_labels[n_train:]
+        #
+        # train_data_n, test_data_n = self._normalize(train_data, test_data)
+
         # create balanced split
         # train_data, train_state, val_data, val_state, test_data, test_state = self._create_balanced_split(data)
 

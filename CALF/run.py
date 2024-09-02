@@ -153,7 +153,7 @@ if __name__ == '__main__':
         for ii in range(args.itr):
             # setting record of experiments
             exp = Exp(args)  # set experiments
-            setting = '{}_{}_{}_{}_ft{}_sl{}_ll{}_pl{}_dm{}_nh{}_el{}_dl{}_df{}_fc{}_eb{}_dt{}_{}_gpt{}_lr{}_wep{}_task_w{}_lora_alpha{}_{}'.format(
+            setting = '{}_{}_{}_{}_ft{}_sl{}_ll{}_pl{}_dm{}_nh{}_el{}_dl{}_df{}_fc{}_eb{}_dt{}_{}_gpt{}_lr{}_wep{}_task_w{}_r{}_lora_alpha{}_{}'.format(
                 args.task_name,
                 args.model_id,
                 args.model,
@@ -175,6 +175,7 @@ if __name__ == '__main__':
                 args.learning_rate,
                 args.word_embedding_path,
                 args.task_w,
+                args.r,
                 args.lora_alpha,
                 ii)
 
@@ -186,7 +187,7 @@ if __name__ == '__main__':
             torch.cuda.empty_cache()
     else:
         ii = 0
-        setting = '{}_{}_{}_{}_ft{}_sl{}_ll{}_pl{}_dm{}_nh{}_el{}_dl{}_df{}_fc{}_eb{}_dt{}_{}_gpt{}_lr{}_wep{}_task_w_{}_lora_alpha{}_{}'.format(
+        setting = '{}_{}_{}_{}_ft{}_sl{}_ll{}_pl{}_dm{}_nh{}_el{}_dl{}_df{}_fc{}_eb{}_dt{}_{}_gpt{}_lr{}_wep{}_task_w{}_r{}_lora_alpha{}_{}'.format(
             args.task_name,
             args.model_id,
             args.model,
@@ -208,9 +209,11 @@ if __name__ == '__main__':
             args.learning_rate,
             args.word_embedding_path,
             args.task_w,
+            args.r,
             args.lora_alpha,
             ii)
 
+        setting = 'classification_ECG_CALF_2500_0_CALF_ECG_ftM_sl2500_ll0_pl0_dm768_nh4_el2_dl1_df768_fc1_ebtimeF_dtTrue_test_gpt6_lr0.0005_wepwte_pca_600.pt_task_w1.0_r32_lora_alpha64_0'
         exp = Exp(args)  # set experiments
         print('>>>>>>>testing : {}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<'.format(setting))
         exp.test(setting, test=1)

@@ -1,13 +1,12 @@
 #!/bin/bash
-#SBATCH --job-name="calf"
+#SBATCH --job-name="test dropped data"
 #SBATCH --account="punim2341"
 #SBATCH --partition=gpu-a100-short
 #SBATCH --nodes=1
-#SBATCH --time=04:00:00
+#SBATCH --time=00:20:00
 #SBATCH --gres=gpu:1
 #SBATCH --ntasks=4
 #SBATCH --ntasks-per-node=4
-#SBATCH --mem=60G
 
 module purge
 module load foss/2022a
@@ -21,7 +20,8 @@ pred_len=0
 
 python run.py \
     --root_path ./datasets/ECG/ \
-    --is_training 1 \
+    --data_path five_dropped_instances.pkl \
+    --is_training 0 \
     --task_name classification \
     --model_id ECG_$model'_'$seq_len'_'$pred_len \
     --data ECG \
@@ -46,7 +46,7 @@ python run.py \
     --lora_dropout 0.1 \
     --patience 10 \
     --task_loss ce \
-    --word_embedding_path wte_pca_600.pt \
+    --word_embedding_path word_embeddings.pt \
     --task_w 1.0 \
     --feature_w 0.01 \
     --output_w 1.0
