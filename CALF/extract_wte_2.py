@@ -86,9 +86,10 @@
 import torch
 from transformers import GPT2Tokenizer, GPT2Model
 
-def save_word_embeddings(file_path='word_embeddings.pt'):
+def save_word_embeddings(file_path='word_embeddings_2.pt'):
     # Define the words for which we want to extract embeddings
-    words = ["Trend", "seasonality", "cyclicity", "rise", "peak", "pattern", "shift", "position", "irregular", "missing", "inconsistent", "discontinuous", "heart", "period", "echo", "arm", "key", "mint"]
+    words = ["Trend", "seasonality", "cyclicity", "rise", "peak", "pattern", "shift", "position", "irregular",
+             "missing", "inconsistent", "discontinuous", "heart", "period", "echo", "arm", "key", "mint"]
 
     # Load GPT-2 tokenizer and model
     tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
@@ -130,4 +131,4 @@ def save_word_embeddings(file_path='word_embeddings.pt'):
     print(loaded_embeddings.shape)
 
 # Call the function to save the embeddings
-save_word_embeddings('word_embeddings.pt')
+save_word_embeddings('word_embeddings_2.pt')

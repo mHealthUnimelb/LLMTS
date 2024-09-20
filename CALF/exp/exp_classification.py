@@ -329,6 +329,7 @@ class Exp_Classification(Exp_Basic):
                 outputs = self.model(batch_x)["outputs_time"]
                 outputs_time1, outputs_text1 = self.hook.output  #store the embedding
                 cross_attention_weights.append(self.hook.attention_weights.cpu())
+                print("attention shape: ", self.hook.attention_weights.cpu().shape)
 
                 time_embeddings.append(outputs_time1.cpu())
                 text_embeddings.append(outputs_text1.cpu())
@@ -347,6 +348,7 @@ class Exp_Classification(Exp_Basic):
         self.handle.remove()  # remove the hook after use
         self.cross_attention_handle.remove()
         cross_attention_weights = torch.cat(cross_attention_weights, 0)
+        print("attention shape: ", cross_attention_weights.shape)
         time_embeddings = torch.cat(time_embeddings, 0)
         time_channedl_1_embedding = time_embeddings[:, 0, :]
         time_channedl_2_embedding = time_embeddings[:, 1, :]
@@ -365,19 +367,20 @@ class Exp_Classification(Exp_Basic):
         trues = trues.cpu().numpy()
         accuracy = cal_accuracy(predictions, trues)
 
-        self.visualize_embeddings(time_channedl_1_embedding, trues, title="time channel 1 token embedding",
+        self.visualize_embeddings(time_channedl_1_embedding, trues, title="time_channel_1_token_embedding",
                                   setting=setting)
-        self.visualize_embeddings(time_channedl_2_embedding, trues, title="time channel 2 token embedding",
-                                  setting=setting)
-
-        self.visualize_embeddings(text_channel_1_embedding, trues, title="text channel 1 token embedding",
-                                  setting=setting)
-        self.visualize_embeddings(text_channel_2_embedding, trues, title="text channel 2 token embedding",
+        self.visualize_embeddings(time_channedl_2_embedding, trues, title="time_channel_2_token_embedding",
                                   setting=setting)
 
-        words = ["Trend", "season", "down", "up", "cycle", "rise", "peak", "atility", "relation", "istence", "pattern",
-                 "shift", "position", "happy", "echo", "arm", "key", "mount", "regular", "missing", "heart", "ir"]
-        self.plot_attention_weights(cross_attention_weights, words_list=words, title="Cross Attention Map", setting=setting)
+        self.visualize_embeddings(text_channel_1_embedding, trues, title="aligned_text_channel_1_token_embedding",
+                                  setting=setting)
+        self.visualize_embeddings(text_channel_2_embedding, trues, title="aligned_text_channel_2_token_embedding",
+                                  setting=setting)
+
+        words = ["Trend", "seasonality", "cyclicity", "rise", "peak", "pattern", "shift", "position", "irregular",
+                 "missing", "inconsistent", "discontinuous", "heart", "period", "echo", "arm", "key", "mint"]
+
+        self.plot_attention_weights(cross_attention_weights, words_list=words, title="dropped_cross_attention_map", setting=setting)
 
         # result save
         folder_path = './results/' + setting + '/'
@@ -460,8 +463,11 @@ class Exp_Classification(Exp_Basic):
         if not os.path.exists(directory):
             os.makedirs(directory)
 
-        plt.figure(figsize=(8, 6))
+        sns.set_context("poster")
+        plt.figure(figsize=(12, 10))
         # Get unique labels and plot each with a different color/marker for legend
+        # label_mapping = {0: 'AFIB', 1: 'AFL', 2: 'J', 3: 'N'}
+        # labels_mapped = [label_mapping[label] for label in labels]
         unique_labels = np.unique(labels)
         # colors = ['r', 'g', 'b', 'c']
         # cmap = ListedColormap(colors[:len(np.unique(labels))])
@@ -474,40 +480,100 @@ class Exp_Classification(Exp_Basic):
         #     plt.scatter(embeddings_2d[indices, 0], embeddings_2d[indices, 1],
         #                 color=colors(i), label=f'Class {label}', alpha=0.7)
 
-
         scatter = plt.scatter(embeddings_2d[:, 0], embeddings_2d[:, 1], c=labels, cmap='viridis', alpha=0.7)
 
         # add legend with unique labels
         handles = [plt.Line2D([0], [0], marker='o', color='w', markerfacecolor=scatter.cmap(scatter.norm(label)),
                               markersize=10) for label in unique_labels]
         # handles = [plt.Line2D([0], [0], marker='o', color='w', markerfacecolor=colors[i], markersize=8, label=f'Class {label}') for i, label in enumerate(unique_labels)]
-        plt.legend(handles, unique_labels, title="Labels", loc='upper right')
+        plt.legend(handles, unique_labels, title="Labels", loc='upper left', markerscale=2.2, fontsize=45)
         # plt.legend(title='Class', handles=handles, loc='best')
 
         # cbar = plt.colorbar(scatter)
         # cbar.set_label('Class')
-        plt.title(title)
-        plt.xlabel('t-SNE Component 1')
-        plt.ylabel('t-SNE Component 2')
+        # plt.title(title)
+        # Remove ticks
+        plt.gca().set_xticks([])
+        plt.gca().set_yticks([])
+        plt.xlabel('Dimension 1', fontsize=45)
+        plt.ylabel('Dimension 2', fontsize=45)
+        plt.gca().spines['top'].set_visible(False)
+        plt.gca().spines['right'].set_visible(False)
         # plt.legend(title='Categories', loc='best')
+        plt.tight_layout()
         plt.savefig(f'./results/{setting}/{title}.png')
         plt.close()
 
+    # def plot_attention_weights(self, attention_weights, words_list, title='Cross Attention Map', setting=None):
+    #     """Plot the cross-attention weights captured by the hook."""
+    #     print("attention_weights shape: ", attention_weights.shape)
+    #     # attention_weights_np = attention_weights.mean(dim=1).numpy()  # Average across channel
+    #     attention_weights_np = attention_weights[:, 1, :].numpy()  # Select the first channel
+    #
+    #     sns.set_context("poster", font_scale=1.2)
+    #     plt.figure(figsize=(22, 28))
+    #     # sns.heatmap(attention_weights_np, cmap='viridis', cbar=True)
+    #     plt.imshow(attention_weights_np, aspect='auto', cmap='viridis', interpolation='nearest')
+    #     plt.xticks(ticks=np.arange(len(words_list)), labels=words_list, rotation=90, fontsize=42)
+    #     plt.yticks(ticks=np.arange(10), labels=list(range(1, 11)))
+    #
+    #     cbar = plt.colorbar()
+    #     cbar.set_label('Relevance Score', rotation=270, labelpad=42)
+    #     plt.xlabel('Selected Words')
+    #     plt.ylabel("Time Series Instances")
+    #     # plt.title(title)
+    #     plt.savefig(f'./results/{setting}/{title}.png')
+    #     plt.close()
 
+    # rot90
+    # def plot_attention_weights(self, attention_weights, words_list, title='Cross Attention Map', setting=None):
+    #     """Plot the cross-attention weights captured by the hook."""
+    #     print("attention_weights shape: ", attention_weights.shape)
+    #     # Select the first channel
+    #     attention_weights_np = attention_weights[:, 1, :].numpy()
+    #
+    #     # Rotate the attention weights 90 degrees clockwise
+    #     attention_weights_np = np.rot90(attention_weights_np, k=-1)  # or k=3
+    #
+    #     sns.set_context("poster", font_scale=1)
+    #     plt.figure(figsize=(30, 10))  # Adjusted figsize for the rotated plot
+    #
+    #     # Plot the rotated attention weights
+    #     plt.imshow(attention_weights_np, aspect='auto', cmap='viridis', interpolation='nearest')
+    #     plt.xticks(ticks=np.arange(10), labels=list(range(1, 11)))  # Updated to match the new orientation
+    #     plt.yticks(ticks=np.arange(len(words_list)), labels=words_list, rotation=0, fontsize=28)  # Adjusted rotation
+    #
+    #     cbar = plt.colorbar()
+    #     cbar.set_label('Relevance Score', rotation=270, labelpad=28)
+    #     plt.xlabel('Time Series Instances')
+    #     # plt.ylabel("Selected Words")
+    #     # plt.title(title)
+    #     plt.savefig(f'./results/{setting}/{title}.png')
+    #     plt.close()
+
+    # without rot90
     def plot_attention_weights(self, attention_weights, words_list, title='Cross Attention Map', setting=None):
         """Plot the cross-attention weights captured by the hook."""
-        attention_weights_np = attention_weights.mean(dim=1).numpy()  # Average across heads
+        print("attention_weights shape: ", attention_weights.shape)
+        # Select the first channel
+        attention_weights_np = attention_weights[:, 1, :].numpy()
 
-        plt.figure(figsize=(12, 8))
-        # sns.heatmap(attention_weights_np, cmap='viridis', cbar=True)
+        # # Rotate the attention weights 90 degrees clockwise
+        # attention_weights_np = np.rot90(attention_weights_np, k=-1)  # or k=3
+
+        sns.set_context("poster", font_scale=1.4)
+        plt.figure(figsize=(35, 80))  # Adjusted figsize for the rotated plot
+
+        # Plot the rotated attention weights
         plt.imshow(attention_weights_np, aspect='auto', cmap='viridis', interpolation='nearest')
-        plt.xticks(ticks=np.arange(len(words_list)), labels=words_list, rotation=90)
-        # plt.yticks(ticks=np.arange(len(time_series_labels)), labels=time_series_labels)
+        plt.xticks(ticks=np.arange(len(words_list)), labels=words_list, rotation=90, fontsize=80)
+        plt.yticks(ticks=np.arange(10), labels=list(range(1, 11)), fontsize=80)
 
         cbar = plt.colorbar()
-        cbar.set_label('Relevance Score', rotation=270, labelpad=15)
-        plt.xlabel('Selected Words')
-        plt.ylabel("Time Series Instances")
-        plt.title(title)
-        plt.savefig(f'./results/{setting}/cross_attention_map.png')
+        cbar.set_label('Relevance Score', rotation=270, labelpad=120, fontsize=80)
+        cbar.ax.tick_params(labelsize=65)
+        # plt.xlabel("Selected Words")
+        plt.ylabel('Time Series Instances', fontsize=80)
+        # plt.title(title)
+        plt.savefig(f'./results/{setting}/{title}.png')
         plt.close()

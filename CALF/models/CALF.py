@@ -32,7 +32,8 @@ class Encoder_PCA(nn.Module):
 
         q = x.transpose(0, 1)
         k = v = self.word_embedding.transpose(0, 1)
-        x, _ = self.cross_attention(q, k, v)
+        x, w_ = self.cross_attention(q, k, v)
+        print("weights shape: ", w_.shape)
 
         x = x.transpose(0, 1)
 

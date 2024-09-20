@@ -36,7 +36,7 @@ class AFDB(object):
         # Set attributes
         self.db_name = 'afdb'
         self.raw_path = os.path.join(DATA_DIR, 'ECG_raw')
-        self.processed_path = os.path.join(DATA_DIR, 'processed_balanced')
+        self.processed_path = os.path.join(DATA_DIR, 'ECG')
         self.label_dict = {'AFIB': 'atrial fibrillation', 'AFL': 'atrial flutter', 'J': 'AV junctional rhythm'}
         self.fs = 300
         self.length = 60
@@ -102,19 +102,19 @@ class AFDB(object):
         # val_state = all_labels[n_train:n_val]
         # test_state = all_labels[n_val:]
 
-        # n_train = int(0.8 * len(all_signals))
-        # train_data = all_signals[:n_train]
-        # test_data = all_signals[n_train:]
-        # train_state = all_labels[:n_train]
-        # test_state = all_labels[n_train:]
-        #
-        # train_data_n, test_data_n = self._normalize(train_data, test_data)
+        n_train = int(0.8 * len(all_signals))
+        train_data = all_signals[:n_train]
+        test_data = all_signals[n_train:]
+        train_state = all_labels[:n_train]
+        test_state = all_labels[n_train:]
+
+        train_data_n, test_data_n = self._normalize(train_data, test_data)
 
         # create balanced split
         # train_data, train_state, val_data, val_state, test_data, test_state = self._create_balanced_split(data)
 
         # segment data
-        segmented_signals, segmented_labels = self._segment_data(all_signals, all_labels, 2500, strategy='discard')
+        segmented_signals, segmented_labels = self._segment_data(train_data_n, train_state, 2500, strategy='discard')
 
         # Plot segmented signals
         # self.plot_signals(segmented_signals)
@@ -128,7 +128,7 @@ class AFDB(object):
 
         # Normalize signals
         # train_data_n, val_data_n, test_data_n = self._normalize(train_data, val_data, test_data)
-        x_train, x_val, x_test = self._normalize(x_train, x_val, x_test)
+        # x_train, x_val, x_test = self._normalize(x_train, x_val, x_test)
 
         # Plot segmented signals
         # self.plot_signals(x_test)
@@ -224,18 +224,29 @@ class AFDB(object):
     #
     #     return train_data, train_state, val_data, val_state, test_data, test_state
 
-    def _normalize(self, train_data, val_data, test_data):
+    # def _normalize(self, train_data, val_data, test_data):
+    #     """ Calculate the mean and std of each feature from the training set
+    #     """
+    #     feature_means = np.mean(train_data, axis=(0, 2))
+    #     feature_std = np.std(train_data, axis=(0, 2))
+    #     train_data_n = (train_data - feature_means[np.newaxis, :, np.newaxis]) / \
+    #                    np.where(feature_std == 0, 1, feature_std)[np.newaxis, :, np.newaxis]
+    #     val_data_n = (val_data - feature_means[np.newaxis, :, np.newaxis]) / \
+    #                  np.where(feature_std == 0, 1, feature_std)[np.newaxis, :, np.newaxis]
+    #     test_data_n = (test_data - feature_means[np.newaxis, :, np.newaxis]) / \
+    #                   np.where(feature_std == 0, 1, feature_std)[np.newaxis, :, np.newaxis]
+    #     return train_data_n, val_data_n, test_data_n
+
+    def _normalize(self, train_data, test_data):
         """ Calculate the mean and std of each feature from the training set
         """
         feature_means = np.mean(train_data, axis=(0, 2))
         feature_std = np.std(train_data, axis=(0, 2))
         train_data_n = (train_data - feature_means[np.newaxis, :, np.newaxis]) / \
                        np.where(feature_std == 0, 1, feature_std)[np.newaxis, :, np.newaxis]
-        val_data_n = (val_data - feature_means[np.newaxis, :, np.newaxis]) / \
-                     np.where(feature_std == 0, 1, feature_std)[np.newaxis, :, np.newaxis]
         test_data_n = (test_data - feature_means[np.newaxis, :, np.newaxis]) / \
                       np.where(feature_std == 0, 1, feature_std)[np.newaxis, :, np.newaxis]
-        return train_data_n, val_data_n, test_data_n
+        return train_data_n, test_data_n
 
     def _get_sections(self):
         """Collect continuous arrhythmia sections."""

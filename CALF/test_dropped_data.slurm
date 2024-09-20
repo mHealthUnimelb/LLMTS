@@ -20,7 +20,7 @@ pred_len=0
 
 python run.py \
     --root_path ./datasets/ECG/ \
-    --data_path five_dropped_instances.pkl \
+    --data_path ten_instances.pkl \
     --is_training 0 \
     --task_name classification \
     --model_id ECG_$model'_'$seq_len'_'$pred_len \

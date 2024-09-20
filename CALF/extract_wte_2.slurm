@@ -8,7 +8,7 @@
 module load Anaconda3/2022.10
 eval "$(conda shell.bash hook)"
 conda activate calf
-python extract_wte.py
+python extract_wte_2.py
 
 ##DO NOT ADD/EDIT BEYOND THIS LINE##
 ##Job monitor command to list the resource usage

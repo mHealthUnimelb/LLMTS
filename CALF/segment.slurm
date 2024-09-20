@@ -1,22 +1,17 @@
 #!/bin/bash
-#SBATCH --job-name="random_drop"
+#SBATCH --job-name="segment"
 #SBATCH --account="punim2341"
 #SBATCH --nodes=1
-#SBATCH --time=00:20:00
+#SBATCH --time=00:30:00
 #SBATCH --ntasks=4
 #SBATCH --ntasks-per-node=4
-
+#SBATCH --mem=30G
 
 module load Anaconda3/2022.10
 eval "$(conda shell.bash hook)"
 conda activate calf
 
-
-input_file="datasets/ECG/x_test.pkl"
-drop_percentage=0.9
-action="zero"
-output_file="datasets/ECG/x_test_dropped_0.9.pkl"
-python random_drop.py $input_file $drop_percentage $action $output_file
+python segment.py
 
 ##DO NOT ADD/EDIT BEYOND THIS LINE##
 ##Job monitor command to list the resource usage

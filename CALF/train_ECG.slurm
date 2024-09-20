@@ -7,7 +7,7 @@
 #SBATCH --gres=gpu:1
 #SBATCH --ntasks=4
 #SBATCH --ntasks-per-node=4
-#SBATCH --mem=60G
+#SBATCH --mem=40G
 
 module purge
 module load foss/2022a

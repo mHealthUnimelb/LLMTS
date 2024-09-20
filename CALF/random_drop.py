@@ -6,7 +6,7 @@ import argparse
 from matplotlib import pyplot as plt
 
 
-def random_drop_data(input_pkl_file, drop_percentage, action='drop', output_pkl_file='datasets/ECG/x_test_dropped.pkl.pkl'):
+def random_drop_data(input_pkl_file, drop_percentage, action='drop', output_pkl_file='datasets/ECG/x_test_dropped.pkl'):
     with open(input_pkl_file, 'rb') as file:
         data = pd.read_pickle(file)
 
