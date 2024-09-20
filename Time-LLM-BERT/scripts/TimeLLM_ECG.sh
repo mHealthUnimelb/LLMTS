@@ -1,0 +1,119 @@
+model_name=TimeLLM
+train_epochs=100
+learning_rate=0.01
+llama_layers=32
+
+master_port=2047
+num_process=4
+batch_size=24
+d_model=32
+d_ff=128
+
+comment='TimeLLM-ECG'
+
+accelerate launch --multi_gpu --mixed_precision bf16 --num_processes $num_process --main_process_port $master_port run_main.py \
+  --task_name classification \
+  --is_training 1 \
+  --root_path ./dataset/ECG/ \
+  --data_path x_train.pkl \
+  --model_id ECG_2500_96 \
+  --model $model_name \
+  --data ECG \
+  --features M \
+  --seq_len 2500 \
+  --label_len 48 \
+  --pred_len 96 \
+  --factor 3 \
+  --enc_in 7 \
+  --dec_in 7 \
+  --c_out 7 \
+  --patch_len 50 \
+  --stride 10
+  --des 'Exp' \
+  --itr 1 \
+  --d_model $d_model \
+  --d_ff $d_ff \
+  --batch_size $batch_size \
+  --learning_rate $learning_rate \
+  --llm_layers $llama_layers \
+  --train_epochs $train_epochs \
+  --model_comment $comment
+
+#accelerate launch --multi_gpu --mixed_precision bf16 --num_processes $num_process --main_process_port $master_port run_main.py \
+#  --task_name long_term_forecast \
+#  --is_training 1 \
+#  --root_path ./dataset/ETT-small/ \
+#  --data_path ETTh1.csv \
+#  --model_id ETTh1_512_192 \
+#  --model $model_name \
+#  --data ETTh1 \
+#  --features M \
+#  --seq_len 512 \
+#  --label_len 48 \
+#  --pred_len 192 \
+#  --factor 3 \
+#  --enc_in 7 \
+#  --dec_in 7 \
+#  --c_out 7 \
+#  --des 'Exp' \
+#  --itr 1 \
+#  --d_model 32 \
+#  --d_ff 128 \
+#  --batch_size $batch_size \
+#  --learning_rate 0.02 \
+#  --llm_layers $llama_layers \
+#  --train_epochs $train_epochs \
+#  --model_comment $comment
+#
+#accelerate launch --multi_gpu --mixed_precision bf16 --num_processes $num_process --main_process_port $master_port run_main.py \
+#  --task_name long_term_forecast \
+#  --is_training 1 \
+#  --root_path ./dataset/ETT-small/ \
+#  --data_path ETTh1.csv \
+#  --model_id ETTh1_512_336 \
+#  --model $model_name \
+#  --data ETTh1 \
+#  --features M \
+#  --seq_len 512 \
+#  --label_len 48 \
+#  --pred_len 336 \
+#  --factor 3 \
+#  --enc_in 7 \
+#  --dec_in 7 \
+#  --c_out 7 \
+#  --des 'Exp' \
+#  --itr 1 \
+#  --d_model $d_model \
+#  --d_ff $d_ff \
+#  --batch_size $batch_size \
+#  --lradj 'COS'\
+#  --learning_rate 0.001 \
+#  --llm_layers $llama_layers \
+#  --train_epochs $train_epochs \
+#  --model_comment $comment
+#
+#accelerate launch --multi_gpu --mixed_precision bf16 --num_processes $num_process --main_process_port $master_port run_main.py \
+#  --task_name long_term_forecast \
+#  --is_training 1 \
+#  --root_path ./dataset/ETT-small/ \
+#  --data_path ETTh1.csv \
+#  --model_id ETTh1_512_720 \
+#  --model $model_name \
+#  --data ETTh1 \
+#  --features M \
+#  --seq_len 512 \
+#  --label_len 48 \
+#  --pred_len 720 \
+#  --factor 3 \
+#  --enc_in 7 \
+#  --dec_in 7 \
+#  --c_out 7 \
+#  --des 'Exp' \
+#  --itr 1 \
+#  --d_model $d_model \
+#  --d_ff $d_ff \
+#  --batch_size $batch_size \
+#  --learning_rate $learning_rate \
+#  --llm_layers $llama_layers \
+#  --train_epochs $train_epochs \
+#  --model_comment $comment
