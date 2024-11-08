@@ -5,9 +5,9 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=4
 #SBATCH --ntasks-per-node=4
-#SBATCH --time=0:10:00
+#SBATCH --time=10:00:00
 #SBATCH --gres=gpu:4
-#SBATCH --mem-per-gpu=80G
+#SBATCH --mem-per-gpu=30G
 
 module purge
 module load foss/2022a

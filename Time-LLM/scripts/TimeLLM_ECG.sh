@@ -12,10 +12,10 @@ d_ff=128
 comment='TimeLLM-ECG'
 
 accelerate launch --multi_gpu --mixed_precision bf16 --num_processes $num_process --main_process_port $master_port run_main.py \
-  --task_name long_term_forecast \
+  --task_name classification \
   --is_training 1 \
   --root_path ./dataset/ECG/ \
-  --data_path ECG.csv \
+  --data_path x_train.pkl \
   --model_id ECG_512_96 \
   --model $model_name \
   --data ECG \

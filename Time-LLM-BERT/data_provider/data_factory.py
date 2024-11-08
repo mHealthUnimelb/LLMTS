@@ -34,14 +34,17 @@ def data_provider(args, flag):
         drop_last = False
         data_set = Data(
             root_path=args.root_path,
+            data_path=args.data_path,
             flag=flag,
+            seq_len=args.seq_len,
+            training_flag=args.is_training
         )
         data_loader = DataLoader(
             data_set,
             batch_size=batch_size,
             shuffle=shuffle_flag,
             num_workers=args.num_workers,
-            drop_last=drop_last,
+            drop_last=drop_last
         )
         return data_set, data_loader
     else:

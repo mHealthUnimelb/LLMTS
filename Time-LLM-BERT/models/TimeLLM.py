@@ -49,7 +49,9 @@ class ClassificationHead(nn.Module):
         print("input_dim shape: ", nf)
         print("num_classes: ", num_classes)
         self.flatten = nn.Flatten(start_dim=-2)
-        self.linear = nn.Linear(nf, num_classes)  # Maps to the number of classes
+        self.linear = nn.Linear(nf, num_classes)  # Mean: Maps to the number of classes
+        # self.linear = nn.Linear(nf * n_vars, num_classes)  # Concatenation: Maps to the number of classes
+        print("nf * n_vars: ", nf * n_vars)
         self.dropout = nn.Dropout(head_dropout)
 
     def forward(self, x):
@@ -75,6 +77,8 @@ class Model(nn.Module):
         self.patch_len = configs.patch_len
         self.stride = configs.stride
         # self.num_classes = configs.num_classes
+        print("patch_len: ", self.patch_len) # 16
+        print("stride: ", self.stride) # 8
 
         if configs.llm_model == 'LLAMA':
             # self.llama_config = LlamaConfig.from_pretrained('/mnt/alps/modelhub/pretrained_model/LLaMA/7B_hf/')
@@ -209,6 +213,8 @@ class Model(nn.Module):
         self.patch_embedding = PatchEmbedding(
             configs.d_model, self.patch_len, self.stride, configs.dropout)
 
+        # self.project_patch_embedding_layer = nn.Linear(configs.d_model, configs.llm_dim)
+
         self.word_embeddings = self.llm_model.get_input_embeddings().weight
         self.vocab_size = self.word_embeddings.shape[0]
         self.num_tokens = 1000
@@ -232,7 +238,7 @@ class Model(nn.Module):
             raise NotImplementedError
 
         self.normalize_layers = Normalize(configs.enc_in, affine=False)
-        self.conv2d_layer = nn.Conv2d(in_channels=2, out_channels=1, kernel_size=1)
+        # self.conv2d_layer = nn.Conv2d(in_channels=2, out_channels=1, kernel_size=1)
 
     def forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec, mask=None):
         if self.task_name == 'long_term_forecast' or self.task_name == 'short_term_forecast':
@@ -372,6 +378,7 @@ class Model(nn.Module):
 
             prompt.append(prompt_)
 
+        print(self.description)
         x_enc = x_enc.reshape(B, N, T).permute(0, 2, 1).contiguous()
 
         prompt = self.tokenizer(prompt, return_tensors="pt", padding=True, truncation=True, max_length=2048).input_ids
@@ -382,40 +389,63 @@ class Model(nn.Module):
         x_enc = x_enc.permute(0, 2, 1).contiguous()
         print("x_enc shape: ", x_enc.shape) # (24, 2, 2500)
 
-        enc_out, n_vars = self.patch_embedding(x_enc.to(torch.bfloat16))
+        time_enc_out, n_vars = self.patch_embedding(x_enc.to(torch.bfloat16))
         print("n_vars: ", n_vars) # 2
-        print("enc_out shape: ", enc_out.shape) # (48, 312, 32)
+        print("enc_out shape: ", time_enc_out.shape) # (48, 312, 32)
 
-        enc_out = self.reprogramming_layer(enc_out, source_embeddings, source_embeddings)
-        print("enc_out shape: ", enc_out.shape) # (48, 312, 768)
+        aligned_enc_out = self.reprogramming_layer(time_enc_out, source_embeddings, source_embeddings)
+        print("enc_out shape: ", aligned_enc_out.shape) # (48, 312, 768)
 
-        llama_enc_out = torch.cat([prompt_embeddings, enc_out], dim=1)
-        print("prompt_embeddings shape: ", prompt_embeddings.shape) # (48, 137, 768)    text embedding
-        print("llama_enc_out shape: ", llama_enc_out.shape) # (48, 449, 768)    time series + text
+        # time_enc_out = self.project_patch_embedding_layer(time_enc_out)
+        # print("enc_out shape: ", time_enc_out.shape)
 
-        class_out = self.llm_model(inputs_embeds=llama_enc_out).last_hidden_state
-        print("class_out shape: ", class_out.shape) # (48, 449, 768)  (batch_size, seq_len, embedding)
+        aligned_llama_enc_out = torch.cat([prompt_embeddings, aligned_enc_out], dim=1)
+        # time_llama_enc_out = torch.cat([prompt_embeddings, time_enc_out], dim=1)
+        print("prompt_embeddings shape: ", prompt_embeddings.shape) # (48, 137, 768)    text embedding   (48, 136, 768)
+        # print("llama_enc_out shape: ", aligned_llama_enc_out.shape) # (48, 449, 768)    time series + text       (48, 448, 768)
 
-        class_out = class_out[:, :, :self.d_ff]
-        print("class_out shape: ", class_out.shape) # (48, 449, 128)
+        aligned_class_out = self.llm_model(inputs_embeds=aligned_llama_enc_out).last_hidden_state
+        # time_class_out = self.llm_model(inputs_embeds=time_llama_enc_out).last_hidden_state
+        print("class_out shape: ", aligned_class_out.shape) # (48, 448, 768)  (batch_size, seq_len, embedding)
 
-        class_out = torch.reshape(
-            class_out, (-1, n_vars, class_out.shape[-2], class_out.shape[-1]))  # (batch_size, num_channels, seq_len, embedding)
-        class_out = class_out.permute(0, 1, 3, 2).contiguous()
-        print("class_out shape: ", class_out.shape) # (24, 2, 128, 449)  (batch_size, num_channels, embedding, seq_len)
+        aligned_class_out = aligned_class_out[:, :, :self.d_ff]
+        # time_class_out = time_class_out[:, :, :self.d_ff]
+        print("class_out shape: ", aligned_class_out.shape) # (48, 448, 128)
 
-        class_out = class_out[:, :, :, -self.patch_nums:]
-        print("dec_out shape: ", class_out.shape) # (24, 2, 128, 312)   (batch_size, num_channels, embedding, seq_len)
+        aligned_class_out = torch.reshape(
+            aligned_class_out, (-1, n_vars, aligned_class_out.shape[-2], aligned_class_out.shape[-1]))  # (batch_size, num_channels, seq_len, embedding)
+        # time_class_out = torch.reshape(
+        #     time_class_out, (-1, n_vars, time_class_out.shape[-2], time_class_out.shape[-1]))
+        aligned_class_out = aligned_class_out.permute(0, 1, 3, 2).contiguous()
+        # time_class_out = time_class_out.permute(0, 1, 3, 2).contiguous()
+        print("class_out shape: ", aligned_class_out.shape) # (24, 2, 128, 448)  (batch_size, num_channels, embedding, seq_len)
 
-        class_out = torch.mean(class_out, dim=1)
-        print("dec_out shape: ", class_out.shape) # (24, 128, 312)
+        aligned_class_out = aligned_class_out[:, :, :, -self.patch_nums:]
+        # time_class_out = time_class_out[:, :, :, -self.patch_nums:]
+        print("dec_out shape: ", aligned_class_out.shape) # (24, 2, 128, 312)   (batch_size, num_channels, embedding, seq_len)
 
-        class_out = class_out.permute(0, 2, 1).contiguous()   #
-        print("dec_out shape: ", class_out.shape)
+        # option 1: mean
+        aligned_class_out = torch.mean(aligned_class_out, dim=1)
+        # time_class_out = torch.mean(time_class_out, dim=1)
+        print("dec_out shape: ", aligned_class_out.shape) # (24, 128, 312)
 
-        logits = self.output_projection(class_out)
+        # option 2: concatenation
+        # class_out = torch.cat([class_out[:, 0, :, :], class_out[:, 1, :, :]],
+        #                       dim=2)  # Concatenate along sequence length dimension
+        # print("class_out after concatenation: ", class_out.shape)  # (24, 128, 624)
+
+        # # option 3: max
+        # class_out, _ = torch.max(class_out, dim=1)
+        # print("class_out after concatenation: ", class_out.shape)
+
+        aligned_class_out = aligned_class_out.permute(0, 2, 1).contiguous()   # (24, 624, 128)
+        # time_class_out = time_class_out.permute(0, 2, 1).contiguous()
+        print("dec_out shape: ", aligned_class_out.shape)
+
+        aligned_logits = self.output_projection(aligned_class_out)
+        # time_logits = self.output_projection(time_class_out)
         # logits = class_out[:, :, :, -1]
-        print("class_out before projection: ", logits.shape) # (24, 2, 4)   (24, 4)
+        print("class_out before projection: ", aligned_logits.shape) # (24, 2, 4)   (24, 4)
 
         # logits = self.output_projection(logits)
         # print("class_out after projection: ", logits.shape)
@@ -426,7 +456,11 @@ class Model(nn.Module):
         # logits = logits.mean(dim=-1)
         # print("logits shape: ", logits.shape)
 
-        return logits
+        # logits = {
+        #     "aligned_logits": aligned_logits,
+        #     "time_logits": time_logits,
+        # }
+        return aligned_logits
 
 
 class ReprogrammingLayer(nn.Module):
@@ -447,9 +481,9 @@ class ReprogrammingLayer(nn.Module):
         S, _ = source_embedding.shape
         H = self.n_heads
 
-        target_embedding = self.query_projection(target_embedding).view(B, L, H, -1)
-        source_embedding = self.key_projection(source_embedding).view(S, H, -1)
-        value_embedding = self.value_projection(value_embedding).view(S, H, -1)
+        target_embedding = self.query_projection(target_embedding).view(B, L, H, -1) # time
+        source_embedding = self.key_projection(source_embedding).view(S, H, -1) # text
+        value_embedding = self.value_projection(value_embedding).view(S, H, -1) # text
 
         out = self.reprogramming(target_embedding, source_embedding, value_embedding)
 

@@ -1,0 +1,22 @@
+python main.py --experiment_description Etstcc --run_description run_1 --seed 0 --selected_dataset ECG4 --method TS-TCC
+
+We are using cuda now.
+=============================================
+Dataset: ECG4
+Method:  TS-TCC
+Mode:    supervised
+Medf:    12
+lr:    0.0003
+Ana_ratio:   1
+
+=============================================
+Datashape here is: torch.Size([35910, 2, 2500])
+Datashape here is: torch.Size([11970, 2, 2500])
+Test=========
+Datashape here is: torch.Size([11970, 2, 2500])
+Data loaded ...
+TS-TCC loaded ...
+TS-TCC Model loaded ...
+
+Evaluate on the Test set:
+Test loss: 0.5229 | Test Accuracy: 0.8293 | AUPRC: 0.6008

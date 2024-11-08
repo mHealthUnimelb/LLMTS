@@ -1,11 +1,11 @@
 #!/bin/bash
-#SBATCH --job-name="time_llm"
+#SBATCH --job-name="max"
 #SBATCH --account="punim2341"
 #SBATCH --partition=gpu-a100
 #SBATCH --nodes=1
 #SBATCH --ntasks=2
 #SBATCH --ntasks-per-node=2
-#SBATCH --time=5:00:00
+#SBATCH --time=6:00:00
 #SBATCH --gres=gpu:2
 #SBATCH --mem-per-gpu=30G
 

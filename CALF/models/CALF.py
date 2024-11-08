@@ -18,6 +18,7 @@ class Encoder_PCA(nn.Module):
         self.word_embedding = word_embedding.T
 
     def forward(self, x):
+        print("x shape: ", x.shape) # (128, 2, 2500)
         B = x.shape[0]
         if self.word_embedding.ndim == 2:
             self.word_embedding = self.word_embedding.repeat(B, 1, 1)
@@ -25,17 +26,23 @@ class Encoder_PCA(nn.Module):
             self.word_embedding = self.word_embedding[0].repeat(B, 1, 1)
 
         x = self.linear(x)
+        print("x shape: ", x.shape) # (128, 2, 768)
 
         x = self.transformer_encoder(x.transpose(0, 1)).transpose(0, 1)
+        print("x shape: ", x.shape) # (128, 2, 768)
 
         x_time = x
+        print("x_time shape: ", x_time.shape) # (128, 2, 768)
 
         q = x.transpose(0, 1)
+        print("q shape: ", q.shape) # (2, 128, 768)
         k = v = self.word_embedding.transpose(0, 1)
+        print("k shape: ", k.shape) # (18, 128, 768)
         x, w_ = self.cross_attention(q, k, v)
-        print("weights shape: ", w_.shape)
+        print("weights shape: ", w_.shape) # (128, 2, 18)
 
         x = x.transpose(0, 1)
+        print("x shape: ", x.shape) # (128, 2, 768)
 
         return x_time, x
 
@@ -63,7 +70,7 @@ class Model(nn.Module):
 
         self.gpt2.h = self.gpt2.h[:configs.gpt_layers]
         self.gpt2_text.h = self.gpt2_text.h[:configs.gpt_layers]
-        self.gpt2 = get_peft_model(self.gpt2, peft_config)
+        # self.gpt2 = get_peft_model(self.gpt2, peft_config)
 
         word_embedding = torch.tensor(torch.load(configs.word_embedding_path)).to(device=device)
         print("word_embedding_path: ", configs.word_embedding_path)
@@ -150,9 +157,13 @@ class Model(nn.Module):
         x = rearrange(x, 'b l m -> b m l')
 
         outputs_time1, outputs_text1 = self.in_layer(x)
+        print("outputs_time1 shape: ", outputs_time1.shape) # (128, 2, 768)
+        print("outputs_text1 shape: ", outputs_text1.shape) # (128, 2, 768)
 
         outputs_time, intermidiate_feat_time = self.gpt2(inputs_embeds=outputs_time1)
         outputs_text, intermidiate_feat_text = self.gpt2_text(inputs_embeds=outputs_text1)
+        print("outputs_time shape: ", outputs_time.shape) # (128, 2, 768)
+        print("outputs_text shape: ", outputs_text.shape) # (128, 2, 768)
 
         outputs_time += outputs_time1
         outputs_text += outputs_text1
@@ -162,9 +173,13 @@ class Model(nn.Module):
         intermidiate_feat_text = tuple(
             [self.text_proj[idx](feat) for idx, feat in enumerate(list(intermidiate_feat_text))])
 
+        print("outputs_time shape: ", outputs_time.shape) # (128, 2, 768)
+        print("outputs_text shape: ", outputs_text.shape) # (128, 2, 768)
         outputs_time = outputs_time.reshape(B, -1)
         outputs_text = outputs_text.reshape(B, -1)
 
+        print("outputs_time shape: ", outputs_time.shape) # (128, 1536)
+        print("outputs_text shape: ", outputs_text.shape) # (128, 1536)
         outputs_time = self.out_layer(outputs_time)
         outputs_text = self.out_layer(outputs_text)
 

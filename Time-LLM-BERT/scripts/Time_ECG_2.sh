@@ -1,6 +1,6 @@
 model_name=TimeLLM
 train_epochs=100
-learning_rate=0.01
+learning_rate=0.001
 llama_layers=32
 
 master_port=2047
@@ -19,15 +19,15 @@ accelerate launch --multi_gpu --mixed_precision bf16 --num_processes $num_proces
   --model_id ECG_512_96 \
   --model $model_name \
   --data ECG \
-  --features MS \
+  --features M \
   --seq_len 2500 \
   --num_classes 4 \
   --label_len 48 \
   --pred_len 96 \
   --factor 3 \
-  --enc_in 7 \
-  --dec_in 7 \
-  --c_out 7 \
+  --enc_in 2 \
+  --dec_in 2 \
+  --c_out 2 \
   --des 'Exp' \
   --itr 1 \
   --d_model $d_model \

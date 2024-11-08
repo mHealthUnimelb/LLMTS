@@ -392,17 +392,22 @@ class Dataset_M4(Dataset):
 
 class Dataset_ECG(Dataset):
 
-    def __init__(self, root_path, flag='train', seq_len=2500, label_len=1, pred_len=1, scale=True, percent=100):
-        # load data
-        if flag == "train":
-            self.x_data = pd.read_pickle(root_path + "x_train.pkl")
-            self.y_data = pd.read_pickle(root_path + "state_train.pkl")
-        elif flag == "val":
-            self.x_data = pd.read_pickle(root_path + "x_val.pkl")
-            self.y_data = pd.read_pickle(root_path + "state_val.pkl")
-        elif flag == "test":
-            self.x_data = pd.read_pickle(root_path + "x_test.pkl")
+    def __init__(self, root_path, data_path=None, flag='train', seq_len=2500, label_len=1, pred_len=1, scale=True, percent=100, training_flag=1):
+        if training_flag == 1:
+            # load data
+            if flag == "train":
+                self.x_data = pd.read_pickle(root_path + "x_train.pkl")
+                self.y_data = pd.read_pickle(root_path + "state_train.pkl")
+            elif flag == "val":
+                self.x_data = pd.read_pickle(root_path + "x_val.pkl")
+                self.y_data = pd.read_pickle(root_path + "state_val.pkl")
+            elif flag == "test":
+                self.x_data = pd.read_pickle(root_path + "x_test.pkl")
+                self.y_data = pd.read_pickle(root_path + "state_test.pkl")
+        else:
+            self.x_data = pd.read_pickle(root_path + data_path)
             self.y_data = pd.read_pickle(root_path + "state_test.pkl")
+            print("data_path: ", data_path)
         self.class_names = ['AFIB', 'AFL', 'J', 'N']
         self.max_seq_len = seq_len
         self.feature_dim = self.x_data.shape[1]
