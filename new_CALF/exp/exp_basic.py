@@ -1,6 +1,6 @@
 import os
 import torch
-from models import CALF, CALF_mTAN_no_patch, CALF_regular, CALF_2, CALF_3
+from models import CALF, CALF_mTAN_no_patch, CALF_regular, CALF_2, CALF_3, CALF_4, CALF_5, CALF_llama
 
 
 class Exp_Basic(object):
@@ -11,7 +11,10 @@ class Exp_Basic(object):
             "CALF_mTAN_no_patch": CALF_mTAN_no_patch,
             "CALF_regular": CALF_regular,
             "CALF_2": CALF_2,
-            "CALF_3": CALF_3
+            "CALF_3": CALF_3,
+            "CALF_4": CALF_4,
+            "CALF_5": CALF_5,
+            "CALF_llama": CALF_llama
         }
         self.device = self._acquire_device()
         self.model = self._build_model().to(self.device)

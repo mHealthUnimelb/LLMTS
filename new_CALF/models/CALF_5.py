@@ -1,3 +1,4 @@
+# first encode, then patching
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -196,8 +197,22 @@ class enc_mtan(nn.Module):
         return pe
 
     def forward(self, x, time_steps):
-        batch_size, seq_len, dim = x.shape
+        time_steps = time_steps.cpu()
+        mask = x[:, :, self.dim:]
+        mask = torch.cat((mask, mask), 2)
+        if self.learn_emb:
+            key = self.learn_time_embedding(time_steps).to(self.device)
+            query = self.learn_time_embedding(self.query.unsqueeze(0)).to(self.device)
+        else:
+            key = self.time_embedding(time_steps, self.embed_time).to(self.device)
+            query = self.time_embedding(self.query.unsqueeze(0), self.embed_time).to(self.device)
 
+        out = self.att(query, key, x, mask)  # batch_size, num_ref_points, embed_dim
+        # out = out.permute(1, 0, 2)
+        # _, out = self.enc(out)
+        # return self.classifier(out.squeeze(0))
+
+        batch_size, seq_len, dim = out.shape
         # compute the required padding
         full_patches = math.ceil((seq_len - self.patch_len) / self.stride) + 1
         total_length = (full_patches - 1) * self.stride + self.patch_len
@@ -205,75 +220,29 @@ class enc_mtan(nn.Module):
         if padding_needed > 0:
             # pad x and time_steps
             pad_layer = nn.ReplicationPad1d((0, padding_needed))
-            x = pad_layer(x.permute(0, 2, 1).contiguous()).permute(0, 2, 1).contiguous()
-            time_steps = pad_layer(time_steps.unsqueeze(1)).squeeze(1)
+            out = pad_layer(out.permute(0, 2, 1).contiguous()).permute(0, 2, 1).contiguous()
 
-        # patching x and time_steps
-        x_patches = x.unfold(dimension=1, size=self.patch_len, step=self.stride) # Shape: [batch_size, num_patches, dim, patch_len]
-        x_patches = x_patches.permute(0, 1, 3, 2) # Shape: [batch_size, num_patches, patch_len, dim]
-        self.num_patches = x_patches.shape[1]
-        x_patches = x_patches.reshape(batch_size * self.num_patches, self.patch_len, dim)
-        print("x_patches shape: ", x_patches.shape)
-        time_steps_patches = time_steps.unfold(dimension=1, size=self.patch_len,
-                                               step=self.stride)  # Shape: [batch_size, num_patches, patch_len]
-        time_steps_patches = time_steps_patches.reshape(batch_size * self.num_patches, self.patch_len)
-        print("time_steps_patches shape: ", time_steps_patches.shape)
+        # patching out
+        out_patches = out.unfold(dimension=1, size=self.patch_len,
+                                 step=self.stride)  # Shape: [batch_size, num_patches, dim, patch_len]
+        out_patches = out_patches.permute(0, 1, 3, 2).contiguous()  # Shape: [batch_size, num_patches, patch_len, dim]
+        print("out_patches shape: ", out_patches.shape)
+        self.num_patches = out_patches.shape[1]
 
-
-
-        print("query shape: ", self.query.shape) # 256
-        # print("query shape: ", self.query.unsqueeze(0).shape) # (1, 256)
-        # query_patches = self.query.unsqueeze(0).unfold(dimension=1, size=self.patch_len, step=self.stride)
-        # print("query shape: ", query_patches.shape) # (1, 4, 100)
-
-        # Reshape to process as a batch of sequences
-        # batch_num_patches = x_patches.shape[0] * x_patches.shape[1]
-        # x_patches = x_patches.contiguous().view(batch_num_patches, self.patch_len, dim)
-        # time_steps_patches = time_steps_patches.contiguous().view(batch_num_patches, self.patch_len)
-
-        # keep batch and patch dimensions separate
-        # mask = x_patches[:, :, :, self.dim:]
-        # mask = torch.cat((mask, mask), dim=-1)
-        # print("mask shape: ", mask.shape) # (128, 2, 100, 82)
-        mask = x_patches[:, :, self.dim:]
-        mask = torch.cat((mask, mask), dim=-1)
-        print("mask shape: ", mask.shape)
-
-        # time_steps = time_steps.cpu()
-        # mask = x[:, :, self.dim:]
-        # mask = x_patches[:, :, self.dim:]
-        # mask = torch.cat((mask, mask), 2)
-        # time embeddings for key and query
-        if self.learn_emb:
-            # key = self.learn_time_embedding(time_steps).to(self.device)
-            key = self.learn_time_embedding(time_steps_patches).to(self.device)
-            print("key shape: ", key.shape)
-            query = self.learn_time_embedding(self.query.unsqueeze(0)).to(self.device)
-            # query = self.learn_time_embedding(query_patches).to(self.device)
-            print("query shape: ", query.shape) # (1, 4, 100, 128)
-            # query = query.unsqueeze(1).expand(-1, self.num_patches, -1, -1)
-            # print("query shape: ", query.shape)
-        else:
-            # key = self.time_embedding(time_steps, self.embed_time).to(self.device)
-            key = self.time_embedding(time_steps_patches, self.embed_time).to(self.device)
-            query = self.time_embedding(self.query.unsqueeze(0), self.embed_time).to(self.device)
-            # query = self.time_embedding(query_patches, self.embed_time).to(self.device)
-            # query = query.unsqueeze(1).expand(-1, self.num_patches, -1, -1)
-
-        # patch positional embeddings
-        patch_positions = torch.arange(self.num_patches, device=self.device).unsqueeze(0).repeat(batch_size, 1)  # Shape: [batch_size, num_patches]
-        patch_pos_emb = self.time_embedding(patch_positions, self.embed_time).to(
-            self.device)  # Shape: [batch_size, num_patches, embed_time]
-
-        # reshape patch_pos_emb to align with key and query
-        patch_pos_emb_key = patch_pos_emb.unsqueeze(2).expand(-1, -1, self.patch_len,
-                                                          -1)  # Shape: [batch_size, num_patches, patch_len, embed_time]
-        patch_pos_emb_key = patch_pos_emb_key.reshape(batch_size * self.num_patches, self.patch_len, -1).contiguous() # [batch_size * num_patches, patch_len, embed_time]
-        print("patch_pos_emb shape: ", patch_pos_emb.shape)  # (batch_size, num_patches, patch_len, embed_time)
+        # # patch positional embeddings
+        # patch_positions = torch.arange(self.num_patches, device=self.device).unsqueeze(0).repeat(batch_size, 1)  # Shape: [batch_size, num_patches]
+        # patch_pos_emb = self.time_embedding(patch_positions, self.embed_time).to(
+        #     self.device)  # Shape: [batch_size, num_patches, embed_time]
         #
-        # Add patch positional embeddings to key and query
-        key += patch_pos_emb_key  # Broadcasting over batch_size, num_patches, patch_len, embed_time
-        print("key shape after adding patch_pos_emb: ", key.shape)
+        # # reshape patch_pos_emb to align with key and query
+        # patch_pos_emb_key = patch_pos_emb.unsqueeze(2).expand(-1, -1, self.patch_len,
+        #                                                   -1)  # Shape: [batch_size, num_patches, patch_len, embed_time]
+        # patch_pos_emb_key = patch_pos_emb_key.reshape(batch_size * self.num_patches, self.patch_len, -1).contiguous() # [batch_size * num_patches, patch_len, embed_time]
+        # print("patch_pos_emb shape: ", patch_pos_emb.shape)  # (batch_size, num_patches, patch_len, embed_time)
+        # #
+        # # Add patch positional embeddings to key and query
+        # key += patch_pos_emb_key  # Broadcasting over batch_size, num_patches, patch_len, embed_time
+        # print("key shape after adding patch_pos_emb: ", key.shape)
         # Expand query to match batch_num_patches and add patch positional embeddings
         # query = query.unsqueeze(0).unsqueeze(0)  # Shape: [1, 1, num_query_points, embed_time]
         # query = query.expand(batch_size * self.num_patches, -1,
@@ -283,21 +252,11 @@ class enc_mtan(nn.Module):
         # query = query.clone() + patch_pos_emb_query  # Using the fact that patch_pos_emb has shape [batch_size, num_patches, patch_len, embed_time]
         # print("query shape after adding patch_pos_emb: ", query.shape)
 
-        # reshape for attention
-        # batch_num_patches = batch_size * self.num_patches
-        # x_patches = x_patches.contiguous().view(batch_num_patches, self.patch_len, dim)
-        # key = key.contiguous().view(batch_num_patches, self.patch_len, -1)
-        # mask = mask.contiguous().view(batch_num_patches, self.patch_len, -1)
-        # # query = query.contiguous().view(query.size(0)*self.num_patches, query.size(-2), -1)
-        # print("query shape: ", query.shape) #
-
-        out = self.att(query, key, x_patches, mask) # (batch_size*nume_patches, T, E)
-        print("attention out shape: ", out.shape) # (2816, 256, 768)
         # Reshape back to (batch_size, total_seq_len, embedding_dim)
         # out = out.view(batch_size, -1, self.nhidden)
         # out = out.view(batch_size, self.num_patches, query.shape[-2], self.nhidden)
-        # out = out.view(batch_size * self.num_patches, query.shape[-2], self.nhidden)
-        print("out shape: ", out.shape) # (704, 256, 768)
+        # out = out_patches.view(batch_size * self.num_patches, self.patch_len, self.nhidden)
+        # print("out shape: ", out.shape)
 
         # adaptive pool
         # out = out.view(batch_size, self.num_patches * query.shape[-2], self.nhidden)
@@ -321,10 +280,18 @@ class enc_mtan(nn.Module):
         # out = out.view(batch_size * self.num_patches, query.shape[-2], self.nhidden)
 
         # lstm
-        out = out.view(batch_size * self.num_patches, query.shape[-2], self.nhidden)
+        out = out_patches.view(batch_size * self.num_patches, self.patch_len, self.nhidden)
         _, (out, _) = self.local_lstm(out)
         out = out.squeeze(0).view(batch_size, self.num_patches, self.nhidden)
         print("out shape: ", out.shape)
+
+        # Add patch positional embeddings to key and query
+        # patch positional embeddings
+        patch_positions = torch.arange(self.num_patches, device=self.device).unsqueeze(0).repeat(batch_size, 1)  # Shape: [batch_size, num_patches]
+        patch_pos_emb = self.time_embedding(patch_positions, out.shape[2]).to(
+            self.device)  # Shape: [batch_size, num_patches, embed_time]
+        out += patch_pos_emb
+        print("out shape after adding patch_pos_emb: ", out.shape)
 
         # global attention
         out = out.transpose(0, 1)  # Shape: (num_patches, batch_size, nhidden)
@@ -371,12 +338,15 @@ class Encoder_PCA(nn.Module):
 
         self.word_embedding = word_embedding.T
 
+        self.num_patches = math.ceil((num_ref_points - patch_len) / stride) + 1
+
     def forward(self, x, time_steps):
         B = x.shape[0]
         if self.word_embedding.ndim == 2:
             self.word_embedding = self.word_embedding.repeat(B, 1, 1)
         elif self.word_embedding.shape[0] != B:
             self.word_embedding = self.word_embedding[0].repeat(B, 1, 1)
+        print("word embedding shape: ", self.word_embedding.shape)
 
         x = rearrange(x, 'b m l -> b l m')
         print("x shape: ", x.shape) # (128, 82, 190)  (128, 190, 82)
@@ -464,21 +434,22 @@ class Model(nn.Module):
                                     num_ca_heads=configs.num_ca_heads)
 
         # self.attention_pooling = AttentionPooling(configs.d_model)
-        self.gru = nn.GRU(configs.d_model, configs.d_model)
+        # self.gru = nn.GRU(configs.d_model, configs.d_model)
 
         if self.task_name == 'long_term_forecast' or self.task_name == 'short_term_forecast':
             self.out_layer = nn.Linear(configs.d_model, configs.pred_len)
         elif self.task_name == 'classification':
             # print("configs.d_model * configs.enc_in: ", configs.d_model * configs.enc_in)
             # self.out_layer = nn.Linear(configs.d_model * configs.enc_in, configs.num_class)
-            self.out_layer = nn.Linear(configs.d_model, configs.num_class)
+            self.num_patches = math.ceil((configs.num_ref_points - configs.patch_len) / configs.stride) + 1
+            self.out_layer = nn.Linear(configs.d_model * self.num_patches, configs.num_class)
             # print("configs.d_model * configs.enc_in: ", configs.d_model * configs.enc_in) # 768 * 7 = 5376
         elif self.task_name == 'imputation':
             self.out_layer = nn.Linear(configs.d_model, configs.seq_len)
         elif self.task_name == 'anomaly_detection':
             self.out_layer = nn.Linear(configs.d_model, configs.seq_len)
 
-        for layer in (self.gpt2_text, self.gpt2, self.in_layer, self.out_layer, self.time_proj, self.text_proj, self.gru):
+        for layer in (self.gpt2_text, self.gpt2, self.in_layer, self.out_layer, self.time_proj, self.text_proj):
             layer.to(device=device)
             layer.train()
 
@@ -549,22 +520,8 @@ class Model(nn.Module):
 
         print("outputs_time shape: ", outputs_time.shape) # (128, 128, 768)
         print("outputs_text shape: ", outputs_text.shape) # (128, 128, 768)
-        # outputs_time = outputs_time.reshape(B, -1)
-        # outputs_text = outputs_text.reshape(B, -1)
-        outputs_time = outputs_time.permute(1, 0, 2) # (num_patches * patch_len, batch_size, embedding_dim)
-        outputs_text = outputs_text.permute(1, 0, 2)
-        print("outputs_time shape: ", outputs_time.shape)
-
-        _, outputs_time = self.gru(outputs_time) # (1, batch_size, embedding_dim)
-        _, outputs_text = self.gru(outputs_text)
-        print("outputs_time shape: ", outputs_time.shape)
-
-        outputs_time = outputs_time.squeeze(0)
-        outputs_text = outputs_text.squeeze(0)
-
-        # # Use attention pooling
-        # outputs_time = self.attention_pooling(outputs_time)  # Shape: (batch_size, embedding)
-        # outputs_text = self.attention_pooling(outputs_text)
+        outputs_time = outputs_time.reshape(B, -1)
+        outputs_text = outputs_text.reshape(B, -1)
 
         print("outputs_time shape: ", outputs_time.shape) # 128, 98304
         print("outputs_text shape: ", outputs_text.shape) # 128, 98304

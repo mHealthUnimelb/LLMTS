@@ -61,137 +61,137 @@ class multiTimeAttention(nn.Module):
         return self.linears[-1](x)
 
 
-class enc_mtan_rnn(nn.Module):
-    def __init__(self, input_dim, query, latent_dim=2, nhidden=16,
-                 embed_time=16, num_heads=1, learn_emb=False, device='cuda'):
-        super(enc_mtan_rnn, self).__init__()
-        self.embed_time = embed_time
-        self.dim = input_dim
-        print("self.dim: ", self.dim)
-        self.device = device
-        self.nhidden = nhidden
-        self.query = query
-        self.learn_emb = learn_emb
-        self.att = multiTimeAttention(2 * input_dim, nhidden, embed_time, num_heads)
-        self.gru_rnn = nn.GRU(nhidden, nhidden, bidirectional=True, batch_first=True)
-        self.hiddens_to_z0 = nn.Sequential(
-            nn.Linear(2 * nhidden, 50),
-            nn.ReLU(),
-            nn.Linear(50, latent_dim * 2))
-        print("latent_dim: ", latent_dim)
-        if learn_emb:
-            self.periodic = nn.Linear(1, embed_time - 1)
-            self.linear = nn.Linear(1, 1)
-
-    def learn_time_embedding(self, tt):
-        tt = tt.to(self.device)
-        tt = tt.unsqueeze(-1)
-        out2 = torch.sin(self.periodic(tt))
-        out1 = self.linear(tt)
-        return torch.cat([out1, out2], -1)
-
-    def fixed_time_embedding(self, pos):
-        d_model = self.embed_time
-        pe = torch.zeros(pos.shape[0], pos.shape[1], d_model)
-        position = 48. * pos.unsqueeze(2)
-        div_term = torch.exp(torch.arange(0, d_model, 2) *
-                             -(np.log(10.0) / d_model))
-        pe[:, :, 0::2] = torch.sin(position * div_term)
-        pe[:, :, 1::2] = torch.cos(position * div_term)
-        return pe
-
-    def forward(self, x, time_steps):
-        print("x shape: ", x.shape) # (128, 190, 82)
-
-        time_steps = time_steps.cpu()
-        print("time_steps shape: ", time_steps.shape) # (128, 190)
-
-        mask = x[:, :, self.dim:]
-        print("mask shape: ", mask.shape) # (128, 190, 41)
-
-        mask = torch.cat((mask, mask), 2)
-        print("mask shape: ", mask.shape) # (128, 190, 82)
-
-        if self.learn_emb:
-            key = self.learn_time_embedding(time_steps).to(self.device)
-            query = self.learn_time_embedding(self.query.unsqueeze(0)).to(self.device)
-        else:
-            key = self.fixed_time_embedding(time_steps).to(self.device)
-            query = self.fixed_time_embedding(self.query.unsqueeze(0)).to(self.device)
-        out = self.att(query, key, x, mask)
-        print("out shape: ", out.shape) # 128, 128, 768
-
-        out, _ = self.gru_rnn(out)
-        print("out shape: ", out.shape) # 128, 128, 1536
-
-        out = self.hiddens_to_z0(out)
-        print("out shape: ", out.shape) # 128, 128, 768
-        return out
-
-
-# class enc_mtan(nn.Module):
-#
-#     def __init__(self, input_dim, query, nhidden=16,
-#                  embed_time=16, num_heads=1, learn_emb=True, freq=10., device='cuda'):
-#         super(enc_mtan, self).__init__()
-#         assert embed_time % num_heads == 0
-#         self.freq = freq
+# class enc_mtan_rnn(nn.Module):
+#     def __init__(self, input_dim, query, latent_dim=2, nhidden=16,
+#                  embed_time=16, num_heads=1, learn_emb=False, device='cuda'):
+#         super(enc_mtan_rnn, self).__init__()
 #         self.embed_time = embed_time
-#         self.learn_emb = learn_emb
 #         self.dim = input_dim
+#         print("self.dim: ", self.dim)
 #         self.device = device
 #         self.nhidden = nhidden
 #         self.query = query
+#         self.learn_emb = learn_emb
 #         self.att = multiTimeAttention(2 * input_dim, nhidden, embed_time, num_heads)
-#         # self.classifier = nn.Sequential(
-#         #     nn.Linear(nhidden, 300),
-#         #     nn.ReLU(),
-#         #     nn.Linear(300, 300),
-#         #     nn.ReLU(),
-#         #     nn.Linear(300, 2))
-#         # self.enc = nn.GRU(nhidden, nhidden)
+#         self.gru_rnn = nn.GRU(nhidden, nhidden, bidirectional=True, batch_first=True)
+#         self.hiddens_to_z0 = nn.Sequential(
+#             nn.Linear(2 * nhidden, 50),
+#             nn.ReLU(),
+#             nn.Linear(50, latent_dim * 2))
+#         print("latent_dim: ", latent_dim)
 #         if learn_emb:
 #             self.periodic = nn.Linear(1, embed_time - 1)
 #             self.linear = nn.Linear(1, 1)
 #
 #     def learn_time_embedding(self, tt):
 #         tt = tt.to(self.device)
-#         print("tt shape: ", tt.shape) # (128, 2, 100)   (1, 256)
 #         tt = tt.unsqueeze(-1)
 #         out2 = torch.sin(self.periodic(tt))
 #         out1 = self.linear(tt)
 #         return torch.cat([out1, out2], -1)
 #
-#     def time_embedding(self, pos, d_model):
+#     def fixed_time_embedding(self, pos):
+#         d_model = self.embed_time
 #         pe = torch.zeros(pos.shape[0], pos.shape[1], d_model)
 #         position = 48. * pos.unsqueeze(2)
 #         div_term = torch.exp(torch.arange(0, d_model, 2) *
-#                              -(np.log(self.freq) / d_model))
+#                              -(np.log(10.0) / d_model))
 #         pe[:, :, 0::2] = torch.sin(position * div_term)
 #         pe[:, :, 1::2] = torch.cos(position * div_term)
 #         return pe
 #
 #     def forward(self, x, time_steps):
-#         batch_size, seq_len, dim = x.shape
+#         print("x shape: ", x.shape) # (128, 190, 82)
+#
 #         time_steps = time_steps.cpu()
+#         print("time_steps shape: ", time_steps.shape) # (128, 190)
+#
 #         mask = x[:, :, self.dim:]
+#         print("mask shape: ", mask.shape) # (128, 190, 41)
+#
 #         mask = torch.cat((mask, mask), 2)
+#         print("mask shape: ", mask.shape) # (128, 190, 82)
+#
 #         if self.learn_emb:
 #             key = self.learn_time_embedding(time_steps).to(self.device)
-#             print("key shape: ", key.shape)
 #             query = self.learn_time_embedding(self.query.unsqueeze(0)).to(self.device)
-#             print("query shape: ", query.shape) # (1, 4, 100, 128)
 #         else:
-#             key = self.time_embedding(time_steps, self.embed_time).to(self.device)
-#             query = self.time_embedding(self.query.unsqueeze(0), self.embed_time).to(self.device)
-#
+#             key = self.fixed_time_embedding(time_steps).to(self.device)
+#             query = self.fixed_time_embedding(self.query.unsqueeze(0)).to(self.device)
 #         out = self.att(query, key, x, mask)
-#         print("attention out shape: ", out.shape) # (2816, 256, 768)
+#         print("out shape: ", out.shape) # 128, 128, 768
 #
-#         # out = out.permute(1, 0, 2)
-#         # _, out = self.enc(out)
-#         # return self.classifier(out.squeeze(0))
+#         out, _ = self.gru_rnn(out)
+#         print("out shape: ", out.shape) # 128, 128, 1536
+#
+#         out = self.hiddens_to_z0(out)
+#         print("out shape: ", out.shape) # 128, 128, 768
 #         return out
+
+
+class enc_mtan(nn.Module):
+
+    def __init__(self, input_dim, query, nhidden=16,
+                 embed_time=16, num_heads=1, learn_emb=True, freq=10., device='cuda'):
+        super(enc_mtan, self).__init__()
+        assert embed_time % num_heads == 0
+        self.freq = freq
+        self.embed_time = embed_time
+        self.learn_emb = learn_emb
+        self.dim = input_dim
+        self.device = device
+        self.nhidden = nhidden
+        self.query = query
+        self.att = multiTimeAttention(2 * input_dim, nhidden, embed_time, num_heads)
+        # self.classifier = nn.Sequential(
+        #     nn.Linear(nhidden, 300),
+        #     nn.ReLU(),
+        #     nn.Linear(300, 300),
+        #     nn.ReLU(),
+        #     nn.Linear(300, 2))
+        # self.enc = nn.GRU(nhidden, nhidden)
+        if learn_emb:
+            self.periodic = nn.Linear(1, embed_time - 1)
+            self.linear = nn.Linear(1, 1)
+
+    def learn_time_embedding(self, tt):
+        tt = tt.to(self.device)
+        print("tt shape: ", tt.shape) # (128, 2, 100)   (1, 256)
+        tt = tt.unsqueeze(-1)
+        out2 = torch.sin(self.periodic(tt))
+        out1 = self.linear(tt)
+        return torch.cat([out1, out2], -1)
+
+    def time_embedding(self, pos, d_model):
+        pe = torch.zeros(pos.shape[0], pos.shape[1], d_model)
+        position = 48. * pos.unsqueeze(2)
+        div_term = torch.exp(torch.arange(0, d_model, 2) *
+                             -(np.log(self.freq) / d_model))
+        pe[:, :, 0::2] = torch.sin(position * div_term)
+        pe[:, :, 1::2] = torch.cos(position * div_term)
+        return pe
+
+    def forward(self, x, time_steps):
+        batch_size, seq_len, dim = x.shape
+        time_steps = time_steps.cpu()
+        mask = x[:, :, self.dim:]
+        mask = torch.cat((mask, mask), 2)
+        if self.learn_emb:
+            key = self.learn_time_embedding(time_steps).to(self.device)
+            print("key shape: ", key.shape)
+            query = self.learn_time_embedding(self.query.unsqueeze(0)).to(self.device)
+            print("query shape: ", query.shape) # (1, 4, 100, 128)
+        else:
+            key = self.time_embedding(time_steps, self.embed_time).to(self.device)
+            query = self.time_embedding(self.query.unsqueeze(0), self.embed_time).to(self.device)
+
+        out = self.att(query, key, x, mask)
+        print("attention out shape: ", out.shape) # (2816, 256, 768)
+
+        # out = out.permute(1, 0, 2)
+        # _, out = self.enc(out)
+        # return self.classifier(out.squeeze(0))
+        return out
 
 
 class Encoder_PCA(nn.Module):
@@ -207,11 +207,11 @@ class Encoder_PCA(nn.Module):
         #                             nhidden=hidden_dim,
         #                             embed_time=128, learn_emb=learn_emb, num_heads=num_heads).to(device)
         print("input dim: ", input_dim)
-        self.encoder = enc_mtan_rnn(input_dim, torch.linspace(0, 1., num_ref_points), latent_dim,
-                                    nhidden=hidden_dim,
-                                    embed_time=128, learn_emb=learn_emb, num_heads=num_heads).to(device)
-        # self.encoder = enc_mtan(input_dim, torch.linspace(0, 1., num_ref_points), nhidden=hidden_dim,
-        #                         embed_time=128, learn_emb=learn_emb, num_heads=num_heads).to(device)
+        # self.encoder = enc_mtan_rnn(input_dim, torch.linspace(0, 1., num_ref_points), latent_dim,
+        #                             nhidden=hidden_dim,
+        #                             embed_time=128, learn_emb=learn_emb, num_heads=num_heads).to(device)
+        self.encoder = enc_mtan(input_dim, torch.linspace(0, 1., num_ref_points), nhidden=hidden_dim,
+                                embed_time=128, learn_emb=learn_emb, num_heads=num_heads).to(device)
 
         self.cross_attention = nn.MultiheadAttention(embed_dim=hidden_dim, num_heads=num_ca_heads)
 

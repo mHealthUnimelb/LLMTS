@@ -4,6 +4,7 @@
 #BATCH --p gpu-a100-short
 #BATCH --time=00:30:00
 #BATCH --gres=gpu:1
+#SBATCH --mem=60G
 
 # check that the script is lanuched with sbatch
 if ["x$SLURM_JOB_ID" == "x" ]; then

@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange
 from peft import LoraConfig, TaskType, get_peft_model
+from transformers import LlamaConfig, LlamaModel, LlamaTokenizer
 from models.GPT2_arch import AccustumGPT2Model
 import math
 import numpy as np
@@ -421,40 +422,118 @@ class Model(nn.Module):
             r=configs.r,
             lora_alpha=configs.lora_alpha,
             lora_dropout=configs.lora_dropout,
-            target_modules=["c_attn"]
+            target_modules=["q_proj", "k_proj", "v_proj", "o_proj"]
         )
 
         self.task_name = configs.task_name
 
-        self.gpt2 = AccustumGPT2Model.from_pretrained('gpt2', output_attentions=True,
-                                                      output_hidden_states=True)  # loads a pretrained GPT-2 base model
-        self.gpt2_text = AccustumGPT2Model.from_pretrained('gpt2', output_attentions=True,
-                                                           output_hidden_states=True)  # loads a pretrained GPT-2 base model
+        self.llama_config = LlamaConfig.from_pretrained('huggyllama/llama-7b')
+        self.llama_config.num_hidden_layers = 6
+        self.llama_config.output_attentions = True
+        self.llama_config.output_hidden_states = True
+        try:
+            self.llama = LlamaModel.from_pretrained(
+                # "/mnt/alps/modelhub/pretrained_model/LLaMA/7B_hf/",
+                'huggyllama/llama-7b',
+                trust_remote_code=True,
+                local_files_only=True,
+                config=self.llama_config,
+                # load_in_4bit=True
+            )
+            self.llama_text = LlamaModel.from_pretrained(
+                # "/mnt/alps/modelhub/pretrained_model/LLaMA/7B_hf/",
+                'huggyllama/llama-7b',
+                trust_remote_code=True,
+                local_files_only=True,
+                config=self.llama_config,
+                # load_in_4bit=True
+            )
+        except EnvironmentError:  # downloads model from HF is not already done
+            print("Local model files not found. Attempting to download...")
+            self.llama = LlamaModel.from_pretrained(
+                # "/mnt/alps/modelhub/pretrained_model/LLaMA/7B_hf/",
+                'huggyllama/llama-7b',
+                trust_remote_code=True,
+                local_files_only=False,
+                config=self.llama_config,
+                # load_in_4bit=True
+            )
+            self.llama_text = LlamaModel.from_pretrained(
+                # "/mnt/alps/modelhub/pretrained_model/LLaMA/7B_hf/",
+                'huggyllama/llama-7b',
+                trust_remote_code=True,
+                local_files_only=False,
+                config=self.llama_config,
+                # load_in_4bit=True
+            )
+        try:
+            self.tokenizer = LlamaTokenizer.from_pretrained(
+                # "/mnt/alps/modelhub/pretrained_model/LLaMA/7B_hf/tokenizer.model",
+                'huggyllama/llama-7b',
+                trust_remote_code=True,
+                local_files_only=True
+            )
+        except EnvironmentError:  # downloads the tokenizer from HF if not already done
+            print("Local tokenizer files not found. Atempting to download them..")
+            self.tokenizer = LlamaTokenizer.from_pretrained(
+                # "/mnt/alps/modelhub/pretrained_model/LLaMA/7B_hf/tokenizer.model",
+                'huggyllama/llama-7b',
+                trust_remote_code=True,
+                local_files_only=False
+            )
 
-        self.gpt2.h = self.gpt2.h[:configs.gpt_layers]
-        self.gpt2_text.h = self.gpt2_text.h[:configs.gpt_layers]
-        self.gpt2 = get_peft_model(self.gpt2, peft_config)
+
+
+        # self.gpt2 = AccustumGPT2Model.from_pretrained('gpt2', output_attentions=True,
+        #                                               output_hidden_states=True)  # loads a pretrained GPT-2 base model
+        # self.gpt2_text = AccustumGPT2Model.from_pretrained('gpt2', output_attentions=True,
+        #                                                    output_hidden_states=True)  # loads a pretrained GPT-2 base model
+        #
+        # self.gpt2.h = self.gpt2.h[:configs.gpt_layers]
+        # self.gpt2_text.h = self.gpt2_text.h[:configs.gpt_layers]
+        # self.gpt2 = get_peft_model(self.gpt2, peft_config)
+
+        self.llama = get_peft_model(self.llama, peft_config)
+        self.llama_text = get_peft_model(self.llama_text, peft_config)
 
         word_embedding = torch.tensor(torch.load(configs.word_embedding_path)).to(device=device)
         print("word_embedding_path: ", configs.word_embedding_path)
 
-        for i, (name, param) in enumerate(self.gpt2.named_parameters()):
-            if 'ln' in name or 'wpe' in name or 'lora' in name:
+        # for i, (name, param) in enumerate(self.gpt2.named_parameters()):
+        #     if 'ln' in name or 'wpe' in name or 'lora' in name:
+        #         param.requires_grad = True
+        #     else:
+        #         param.requires_grad = False
+        #
+        # for i, (name, param) in enumerate(self.gpt2_text.named_parameters()):
+        #     if 'wpe' in name:
+        #         param.requires_grad = True
+        #     else:
+        #         param.requires_grad = False
+
+        for name, param in self.llama.named_parameters():
+            if 'norm' in name or 'embed_tokens' in name or 'lora' in name:
                 param.requires_grad = True
             else:
                 param.requires_grad = False
 
-        for i, (name, param) in enumerate(self.gpt2_text.named_parameters()):
-            if 'wpe' in name:
+        for name, param in self.llama_text.named_parameters():
+            if 'embed_tokens' in name:
                 param.requires_grad = True
             else:
                 param.requires_grad = False
+
+        # self.time_proj = nn.ModuleList(
+        #     [nn.Linear(configs.d_model, configs.d_model, bias=False) for _ in range(configs.gpt_layers + 1)])
+        #
+        # self.text_proj = nn.ModuleList(
+        #     [nn.Linear(configs.d_model, configs.d_model, bias=False) for _ in range(configs.gpt_layers + 1)])
 
         self.time_proj = nn.ModuleList(
-            [nn.Linear(configs.d_model, configs.d_model, bias=False) for _ in range(configs.gpt_layers + 1)])
+            [nn.Linear(configs.d_model, configs.d_model, bias=False) for _ in range(self.llama_config.num_hidden_layers + 1)])
 
         self.text_proj = nn.ModuleList(
-            [nn.Linear(configs.d_model, configs.d_model, bias=False) for _ in range(configs.gpt_layers + 1)])
+            [nn.Linear(configs.d_model, configs.d_model, bias=False) for _ in range(self.llama_config.num_hidden_layers + 1)])
 
         print("config.dim: ", configs.dim) # 41
         self.in_layer = Encoder_PCA(configs.dim, word_embedding, hidden_dim=configs.d_model,
@@ -478,7 +557,13 @@ class Model(nn.Module):
         elif self.task_name == 'anomaly_detection':
             self.out_layer = nn.Linear(configs.d_model, configs.seq_len)
 
-        for layer in (self.gpt2_text, self.gpt2, self.in_layer, self.out_layer, self.time_proj, self.text_proj, self.gru):
+        # for layer in (self.gpt2_text, self.gpt2, self.in_layer, self.out_layer, self.time_proj, self.text_proj, self.gru):
+        #     layer.to(device=device)
+        #     layer.train()
+
+        for layer in (
+                self.llama_text, self.llama, self.in_layer, self.out_layer, self.time_proj, self.text_proj, self.gru
+        ):
             layer.to(device=device)
             layer.train()
 
@@ -534,18 +619,28 @@ class Model(nn.Module):
         print("outputs_time1 shape: ", outputs_time1.shape) # (128, 128, 768)
         print("outputs_text1 shape: ", outputs_text1.shape) # (128, 128, 768)
 
-        outputs_time, intermidiate_feat_time = self.gpt2(inputs_embeds=outputs_time1)
-        outputs_text, intermidiate_feat_text = self.gpt2_text(inputs_embeds=outputs_text1)
+        # outputs_time, intermidiate_feat_time = self.gpt2(inputs_embeds=outputs_time1)
+        # outputs_text, intermidiate_feat_text = self.gpt2_text(inputs_embeds=outputs_text1)
+        llama_output_time = self.llama.model(inputs_embeds=outputs_time1, output_hidden_states=True)
+        outputs_time = llama_output_time.last_hidden_state
+        llama_output_text = self.llama_text.model(inputs_embeds=outputs_text1, output_hidden_states=True)
+        outputs_text = llama_output_text.last_hidden_state
         print("outputs_time shape: ", outputs_time.shape) # (128, 128, 768)
         print("outputs_text shape: ", outputs_text.shape) # (128, 128, 768)
 
         outputs_time += outputs_time1
         outputs_text += outputs_text1
 
+        # intermidiate_feat_time = tuple(
+        #     [self.time_proj[idx](feat) for idx, feat in enumerate(list(intermidiate_feat_time))])
+        # intermidiate_feat_text = tuple(
+        #     [self.text_proj[idx](feat) for idx, feat in enumerate(list(intermidiate_feat_text))])
         intermidiate_feat_time = tuple(
-            [self.time_proj[idx](feat) for idx, feat in enumerate(list(intermidiate_feat_time))])
+            self.time_proj[idx](feat) for idx, feat in enumerate(llama_output_time.hidden_states)
+        )
         intermidiate_feat_text = tuple(
-            [self.text_proj[idx](feat) for idx, feat in enumerate(list(intermidiate_feat_text))])
+            self.text_proj[idx](feat) for idx, feat in enumerate(llama_output_text.hidden_states)
+        )
 
         print("outputs_time shape: ", outputs_time.shape) # (128, 128, 768)
         print("outputs_text shape: ", outputs_text.shape) # (128, 128, 768)

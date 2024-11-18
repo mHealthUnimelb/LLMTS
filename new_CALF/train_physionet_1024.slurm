@@ -19,49 +19,6 @@ seq_len=2500
 model=CALF_2
 pred_len=0
 
-python run.py \
-    --root_path ./datasets/PhysioNet/ \
-    --data_type irregular \
-    --is_training 1 \
-    --task_name classification \
-    --model_id PhysioNet_$model'_'$seq_len'_'$pred_len \
-    --data PhysioNet \
-    --seq_len $seq_len \
-    --label_len 0 \
-    --pred_len $pred_len \
-    --batch_size 128 \
-    --learning_rate 0.00005 \
-    --lradj type1 \
-    --train_epochs 100 \
-    --d_model 768 \
-    --n_heads 4 \
-    --d_ff 768 \
-    --dropout 0.3 \
-    --enc_in 256 \
-    --c_out 256 \
-    --gpt_layer 6 \
-    --itr 1 \
-    --model $model \
-    --r 32 \
-    --lora_alpha 64 \
-    --lora_dropout 0.1 \
-    --patience 10 \
-    --task_loss ce \
-    --word_embedding_path wte_pca_600.pt \
-    --task_w 1.0 \
-    --feature_w 0.01 \
-    --output_w 1.0 \
-    --num_ref_points 256 \
-    --n 8000 \
-    --latent_dim 384 \
-    --rec_hidden 128 \
-    --quantization 0.016 \
-    --classif \
-    --num_ca_heads 1 \
-    --learn_emb \
-    --patch_len 16 \
-    --stride 8
-
 # 1024
 python run.py \
     --root_path ./datasets/PhysioNet/ \
