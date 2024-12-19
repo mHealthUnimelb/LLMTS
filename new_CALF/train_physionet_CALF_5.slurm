@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name="calf"
 #SBATCH --account="punim2341"
-#SBATCH --partition=gpu-a100-short
+#SBATCH --partition=gpu-a100
 #SBATCH --nodes=1
 #SBATCH --time=04:00:00
 #SBATCH --gres=gpu:1
@@ -33,7 +33,7 @@ python run.py \
     --learning_rate 0.0005 \
     --lradj type1 \
     --train_epochs 100 \
-    --d_model 768 \
+    --d_model 4096 \
     --n_heads 4 \
     --d_ff 768 \
     --dropout 0.3 \
@@ -47,7 +47,7 @@ python run.py \
     --lora_dropout 0.1 \
     --patience 10 \
     --task_loss ce \
-    --word_embedding_path wte_pca_600.pt \
+    --word_embedding_path llama_wte_pca_600.pt \
     --task_w 1.0 \
     --feature_w 0.01 \
     --output_w 1.0 \
@@ -57,7 +57,7 @@ python run.py \
     --rec_hidden 128 \
     --quantization 0.016 \
     --classif \
-    --num_ca_heads 4 \
+    --num_ca_heads 2 \
     --learn_emb \
     --patch_len 16 \
     --stride 8

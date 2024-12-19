@@ -1,0 +1,17 @@
+__pycache__/
+__deprecated__/
+*/processed_data/
+*/rawdata/
+dataset/P12data/processed_data/
+dataset/P19data/processed_data/
+dataset/PAMdata/processed_data/
+dataset/TSRAdata/processed_data/
+dataset/raindrop/baselines/mTAND/data/
+ckpt/
+wandb/
+*.npy
+*.pt
+*.ts
+*.zip
+*.log
+*.wandb

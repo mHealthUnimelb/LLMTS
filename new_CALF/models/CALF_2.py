@@ -273,7 +273,7 @@ class enc_mtan(nn.Module):
         #
         # Add patch positional embeddings to key and query
         key += patch_pos_emb_key  # Broadcasting over batch_size, num_patches, patch_len, embed_time
-        print("key shape after adding patch_pos_emb: ", key.shape)
+        # print("key shape after adding patch_pos_emb: ", key.shape)
         # Expand query to match batch_num_patches and add patch positional embeddings
         # query = query.unsqueeze(0).unsqueeze(0)  # Shape: [1, 1, num_query_points, embed_time]
         # query = query.expand(batch_size * self.num_patches, -1,
@@ -321,12 +321,20 @@ class enc_mtan(nn.Module):
         # out = out.view(batch_size * self.num_patches, query.shape[-2], self.nhidden)
 
         # lstm
-        out = out.view(batch_size * self.num_patches, query.shape[-2], self.nhidden)
+        # out = out.view(batch_size * self.num_patches, query.shape[-2], self.nhidden)
         _, (out, _) = self.local_lstm(out)
         out = out.squeeze(0).view(batch_size, self.num_patches, self.nhidden)
         print("out shape: ", out.shape)
 
         # global attention
+        # patch positional embeddings
+        # patch_positions = torch.arange(self.num_patches, device=self.device).unsqueeze(0).repeat(batch_size, 1)  # Shape: [batch_size, num_patches]
+        # patch_pos_emb = self.time_embedding(patch_positions, self.nhidden).to(
+        #     self.device)  # Shape: [batch_size, num_patches, embed_time]
+        #
+        # # Add patch positional embeddings to out
+        # out += patch_pos_emb
+        # print("out shape after adding patch_pos_emb: ", out.shape)
         out = out.transpose(0, 1)  # Shape: (num_patches, batch_size, nhidden)
         global_out, _ = self.global_att(out, out, out)
         out = global_out.transpose(0, 1)  # Shape: (batch_size, num_patches, nhidden)
