@@ -1,4 +1,4 @@
-from data_provider.data_loader import Dataset_ETT_hour, Dataset_ETT_minute, Dataset_Custom, Dataset_M4, Dataset_ECG
+from data_provider.data_loader import Dataset_ETT_hour, Dataset_ETT_minute, Dataset_Custom, Dataset_M4, Dataset_ECG, Dataset_Physionet
 from torch.utils.data import DataLoader
 
 data_dict = {
@@ -10,7 +10,8 @@ data_dict = {
     'Traffic': Dataset_Custom,
     'Weather': Dataset_Custom,
     'm4': Dataset_M4,
-    'ECG': Dataset_ECG
+    'ECG': Dataset_ECG,
+    'PhysioNet': Dataset_Physionet,
 }
 
 
@@ -31,6 +32,23 @@ def data_provider(args, flag):
         freq = args.freq
 
     if args.task_name == 'classification':
+        if args.data == 'PhysioNet':
+            data_set = Data(
+                root_path=args.root_path,
+                data_path=args.data_path,
+                args=args,
+                device='cpu',
+                flag=flag,
+                q=args.quantization,
+                training_flag=args.is_training
+            )
+            if flag == 'train':
+                data_loader = data_set.data_objects["train_dataloader"]
+            elif flag == 'val':
+                data_loader = data_set.data_objects["val_dataloader"]
+            elif flag == 'test':
+                data_loader = data_set.data_objects["test_dataloader"]
+            return data_set, data_loader
         drop_last = False
         data_set = Data(
             root_path=args.root_path,

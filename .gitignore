@@ -14,5 +14,7 @@
 /new_CALF/slurm-*
 /new_CALF/checkpoints/
 /llm4ir/slurm-*
+/S2IP-LLM/slurm-*
+/S2IP-LLM/Irregular_Classification/checkpoints
 .idea/
 

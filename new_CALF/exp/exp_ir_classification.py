@@ -22,6 +22,7 @@ import copy
 
 warnings.filterwarnings('ignore')
 
+
 class Hook:
     def __init__(self):
         self.output = None
@@ -33,6 +34,7 @@ class Hook:
 
     def attention_hook_fn(self, module, input, output):
         self.attention_weights = output[1]
+
 
 class Exp_IR_Classification(Exp_Basic):
     def __init__(self, args):
@@ -48,7 +50,8 @@ class Exp_IR_Classification(Exp_Basic):
         self.test_auprcs = []
         self.hook = Hook()
         self.handle = self.model.in_layer.register_forward_hook(self.hook.hook_fn)
-        self.cross_attention_handle = self.model.in_layer.cross_attention.register_forward_hook(self.hook.attention_hook_fn)
+        self.cross_attention_handle = self.model.in_layer.cross_attention.register_forward_hook(
+            self.hook.attention_hook_fn)
 
     def _build_model(self):
         # model input depends on data
@@ -176,14 +179,20 @@ class Exp_IR_Classification(Exp_Basic):
                 batch_x = batch_x.float().to(self.device)
                 label = label.to(self.device)
                 batch_len = batch_x.shape[0]
-                observed_data, observed_mask, observed_tp = batch_x[:, :, :dim], batch_x[:, :, dim:2 * dim], batch_x[:, :, -1]
+                observed_data, observed_mask, observed_tp = batch_x[:, :, :dim], batch_x[:, :, dim:2 * dim], batch_x[:,
+                                                                                                             :, -1]
 
-                print("batch_x shape: ", batch_x.shape) # 128, 190, 83
-                print("label shape: ", label.shape) # 128
+                print("batch_x shape: ", batch_x.shape)  # 128, 190, 83
+                print("label shape: ", label.shape)  # 128
 
-                print("input shape: ", torch.cat((observed_data, observed_mask), 2).shape) # (128, 190, 82)
+                print("input shape: ", torch.cat((observed_data, observed_mask), 2).shape)  # (128, 190, 82)
                 outputs = self.model(torch.cat((observed_data, observed_mask), 2), observed_tp)
 
+                print(
+                    f"Label min: {label.min()}, Label max: {label.max()}, Label dtype: {label.dtype}, Label shape: {label.shape}")
+                print(f"outputs.shape: {outputs['outputs_time'].shape}, outputs.dtype: {outputs['outputs_time'].dtype}")
+                print(f"label.shape: {label.shape}, label.dtype: {label.dtype}")
+                print(f"label unique values: {torch.unique(label)}")
                 loss = criterion(outputs, label.long().squeeze(-1))
                 train_loss.append(loss.item())
 
@@ -230,24 +239,29 @@ class Exp_IR_Classification(Exp_Basic):
             # calculate accuracy
             correct = (train_predictions == train_trues).float()
             train_trues = train_trues.detach().cpu().numpy()
-            train_auc = roc_auc_score(train_trues, train_probs.detach().cpu().numpy()[:, 1]) if not self.args.classify_pertp else 0.
-            train_auprc = average_precision_score(train_trues, train_probs.detach().cpu().numpy()[:, 1]) if not self.args.classify_pertp else 0.
+            train_auc = roc_auc_score(train_trues,
+                                      train_probs.detach().cpu().numpy()[:, 1]) if not self.args.classify_pertp else 0.
+            train_auprc = average_precision_score(train_trues, train_probs.detach().cpu().numpy()[:,
+                                                               1]) if not self.args.classify_pertp else 0.
             train_accuracy = correct.mean().item()
             self.train_auprcs.append(train_auprc)
             self.train_accuracies.append(train_accuracy)
 
-            vali_loss, vali_accuracy, vali_auprc, vali_auc = self.vali(self.args, vali_data, vali_loader, self._select_vali_criterion())
+            vali_loss, vali_accuracy, vali_auprc, vali_auc = self.vali(self.args, vali_data, vali_loader,
+                                                                       self._select_vali_criterion())
             self.vali_losses.append(vali_loss)
             self.vali_accuracies.append(vali_accuracy)
             self.vali_auprcs.append(vali_auprc)
-            test_loss, test_accuracy, test_auprc, test_auc = self.vali(self.args, test_data, test_loader, self._select_vali_criterion())
+            test_loss, test_accuracy, test_auprc, test_auc = self.vali(self.args, test_data, test_loader,
+                                                                       self._select_vali_criterion())
             self.test_losses.append(test_loss)
             self.test_accuracies.append(test_accuracy)
             self.test_auprcs.append(test_auprc)
 
             print(
                 "Epoch: {0}, Steps: {1} | Train Loss: {2:.3f} Train Acc: {3:.3f} Train AUPRC: {4:.3f} Train AUC: {5:.3f} Vali Loss: {6:.3f} Vali Acc: {7:.3f} Vali AUPRC: {8:.3f} Vali AUC: {9:.3f} Test Loss: {10:.3f} Test Acc: {11:.3f} Test AUPRC: {12:.3f} Test AUC: {13:.3f}"
-                .format(epoch + 1, train_steps, train_loss, train_accuracy, train_auprc, train_auc, vali_loss, vali_accuracy,
+                .format(epoch + 1, train_steps, train_loss, train_accuracy, train_auprc, train_auc, vali_loss,
+                        vali_accuracy,
                         vali_auprc, vali_auc, test_loss, test_accuracy, test_auprc, test_auc))
 
             # if self.args.cos:
@@ -348,7 +362,7 @@ class Exp_IR_Classification(Exp_Basic):
                                                                                                              :, -1]
 
                 outputs = self.model(torch.cat((observed_data, observed_mask), 2), observed_tp)["outputs_time"]
-                outputs_time1, outputs_text1 = self.hook.output  #store the embedding
+                outputs_time1, outputs_text1 = self.hook.output  # store the embedding
                 cross_attention_weights.append(self.hook.attention_weights.cpu())
                 print("attention shape: ", self.hook.attention_weights.cpu().shape)
 
@@ -404,7 +418,8 @@ class Exp_IR_Classification(Exp_Basic):
         words = ["Trend", "seasonality", "cyclicity", "rise", "peak", "pattern", "shift", "position", "irregular",
                  "missing", "inconsistent", "discontinuous", "heart", "period", "echo", "arm", "key", "mint"]
 
-        self.plot_attention_weights(cross_attention_weights, words_list=words, title="dropped_cross_attention_map", setting=setting)
+        self.plot_attention_weights(cross_attention_weights, words_list=words, title="dropped_cross_attention_map",
+                                    setting=setting)
 
         # result save
         folder_path = './results/' + setting + '/'

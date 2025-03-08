@@ -29,8 +29,8 @@ python run.py \
     --seq_len $seq_len \
     --label_len 0 \
     --pred_len $pred_len \
-    --batch_size 128 \
-    --learning_rate 0.00005 \
+    --batch_size 24 \
+    --learning_rate 0.000005 \
     --lradj type1 \
     --train_epochs 100 \
     --d_model 768 \
@@ -59,8 +59,8 @@ python run.py \
     --classif \
     --num_ca_heads 1 \
     --learn_emb \
-    --patch_len 16 \
-    --stride 8
+    --patch_len 64 \
+    --stride 32
 
 ##DO NOT ADD/EDIT BEYOND THIS LINE##
 ##Job monitor command to list the resource usage

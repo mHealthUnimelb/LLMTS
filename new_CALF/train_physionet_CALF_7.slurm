@@ -14,6 +14,7 @@ module load foss/2022a
 module load Anaconda3/2022.10
 eval "$(conda shell.bash hook)"
 conda activate calf
+export CUDA_LAUNCH_BLOCKING=1
 
 seq_len=2500
 model=CALF_7
@@ -30,7 +31,7 @@ python run.py \
     --label_len 0 \
     --pred_len $pred_len \
     --batch_size 64 \
-    --learning_rate 0.0005 \
+    --learning_rate 0.00005 \
     --lradj type1 \
     --train_epochs 100 \
     --d_model 768 \

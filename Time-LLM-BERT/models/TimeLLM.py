@@ -350,6 +350,7 @@ class Model(nn.Module):
         print("x_enc shape: ", x_enc.shape)   # (24, 2500, 2)
 
         B, T, N = x_enc.size() # B: batch size, T: sequence length, N: num features
+        print(B, T, N)
         x_enc = x_enc.permute(0, 2, 1).contiguous().reshape(B * N, T, 1)
         print("x_enc shape after permute: ", x_enc.shape)
 
@@ -402,7 +403,7 @@ class Model(nn.Module):
         aligned_llama_enc_out = torch.cat([prompt_embeddings, aligned_enc_out], dim=1)
         # time_llama_enc_out = torch.cat([prompt_embeddings, time_enc_out], dim=1)
         print("prompt_embeddings shape: ", prompt_embeddings.shape) # (48, 137, 768)    text embedding   (48, 136, 768)
-        # print("llama_enc_out shape: ", aligned_llama_enc_out.shape) # (48, 449, 768)    time series + text       (48, 448, 768)
+        print("llama_enc_out shape: ", aligned_llama_enc_out.shape) # (48, 449, 768)    time series + text       (48, 448, 768)
 
         aligned_class_out = self.llm_model(inputs_embeds=aligned_llama_enc_out).last_hidden_state
         # time_class_out = self.llm_model(inputs_embeds=time_llama_enc_out).last_hidden_state

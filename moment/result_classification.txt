@@ -1,0 +1,10 @@
+ir_classification_PhysioNet_PhysioNet_2881_ebtimeF_0  
+Accuracy:0.13375
+AUPRC:0.11221519755058681
+AUC:0.43353427465577
+
+ir_classification_PhysioNet_PhysioNet_2881_ebtimeF_0  
+Accuracy:0.13375
+AUPRC:0.11221519755058681
+AUC:0.43353427465577
+
