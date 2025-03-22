@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH --job-name="calf"
 #SBATCH --account="punim2341"
-#SBATCH --partition=gpu-a100-short
+#SBATCH --partition=gpu-a100
 #SBATCH --nodes=1
-#SBATCH --time=04:00:00
+#SBATCH --time=10:00:00
 #SBATCH --gres=gpu:1
 #SBATCH --ntasks=8
 #SBATCH --ntasks-per-node=8

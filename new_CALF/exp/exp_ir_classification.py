@@ -405,21 +405,21 @@ class Exp_IR_Classification(Exp_Basic):
         auprc = average_precision_score(trues, probs.cpu().numpy()[:, 1]) if not args.classify_pertp else 0.
         accuracy = cal_accuracy(predictions, trues)
 
-        self.visualize_embeddings(time_channedl_1_embedding, trues, title="time_channel_1_token_embedding",
-                                  setting=setting)
-        self.visualize_embeddings(time_channedl_2_embedding, trues, title="time_channel_2_token_embedding",
-                                  setting=setting)
+        # self.visualize_embeddings(time_channedl_1_embedding, trues, title="time_channel_1_token_embedding",
+        #                           setting=setting)
+        # self.visualize_embeddings(time_channedl_2_embedding, trues, title="time_channel_2_token_embedding",
+        #                           setting=setting)
+        #
+        # self.visualize_embeddings(text_channel_1_embedding, trues, title="aligned_text_channel_1_token_embedding",
+        #                           setting=setting)
+        # self.visualize_embeddings(text_channel_2_embedding, trues, title="aligned_text_channel_2_token_embedding",
+        #                           setting=setting)
 
-        self.visualize_embeddings(text_channel_1_embedding, trues, title="aligned_text_channel_1_token_embedding",
-                                  setting=setting)
-        self.visualize_embeddings(text_channel_2_embedding, trues, title="aligned_text_channel_2_token_embedding",
-                                  setting=setting)
-
-        words = ["Trend", "seasonality", "cyclicity", "rise", "peak", "pattern", "shift", "position", "irregular",
-                 "missing", "inconsistent", "discontinuous", "heart", "period", "echo", "arm", "key", "mint"]
-
-        self.plot_attention_weights(cross_attention_weights, words_list=words, title="dropped_cross_attention_map",
-                                    setting=setting)
+        # words = ["Trend", "seasonality", "cyclicity", "rise", "peak", "pattern", "shift", "position", "irregular",
+        #          "missing", "inconsistent", "discontinuous", "heart", "period", "echo", "arm", "key", "mint"]
+        #
+        # self.plot_attention_weights(cross_attention_weights, words_list=words, title="dropped_cross_attention_map",
+        #                             setting=setting)
 
         # result save
         folder_path = './results/' + setting + '/'

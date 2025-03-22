@@ -825,7 +825,7 @@ class Dataset_Physionet(Dataset):
 
         total_dataset = PhysioNet('data/physionet',
                                   quantization=q,
-                                  download=True, n_samples=min(10000, args.n),
+                                  download=True,
                                   device=device)
 
         # Combine and shuffle samples from physionet Train and physionet Test
@@ -839,11 +839,11 @@ class Dataset_Physionet(Dataset):
         #                     test_dataset_obj[:len(test_dataset_obj)]
         print("total_dataset shape:", len(total_dataset))
         # Shuffle and split
-        train_data, temp_data = model_selection.train_test_split(total_dataset, train_size=0.8,
+        train_data, test_data = model_selection.train_test_split(total_dataset, train_size=0.8,
                                                                  random_state=42, shuffle=True)
         if args.classif:
             # if classification task, we further split into train and validation sets
-            val_data, test_data = model_selection.train_test_split(temp_data, train_size=0.5,
+            val_data, test_data = model_selection.train_test_split(test_data, train_size=0.5,
                                                                    random_state=42, shuffle=False)
 
         record_id, tt, vals, mask, labels = train_data[0]
@@ -851,7 +851,7 @@ class Dataset_Physionet(Dataset):
         # n_samples = len(total_dataset)
         input_dim = vals.size(-1)
         data_min, data_max = get_data_min_max(total_dataset, device)
-        batch_size = min(min(len(train_data), args.batch_size), args.n)
+        batch_size = min(len(train_data), args.batch_size)
         if dataset_flag:
             test_data_combined = variable_time_collate_fn(test_data, device, classify=args.classif,
                                                           data_min=data_min, data_max=data_max)

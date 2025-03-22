@@ -55,9 +55,14 @@ class PhysioNet(object):
     urls = [
         'https://physionet.org/files/challenge-2012/1.0.0/set-a.tar.gz?download',
         'https://physionet.org/files/challenge-2012/1.0.0/set-b.tar.gz?download',
+        'https://physionet.org/files/challenge-2012/1.0.0/set-c.tar.gz?download',
     ]
 
-    outcome_urls = ['https://physionet.org/files/challenge-2012/1.0.0/Outcomes-a.txt']
+    outcome_urls = [
+        'https://physionet.org/files/challenge-2012/1.0.0/Outcomes-a.txt',
+        'https://physionet.org/files/challenge-2012/1.0.0/Outcomes-b.txt',
+        'https://physionet.org/files/challenge-2012/1.0.0/Outcomes-c.txt',
+    ]
 
     params = [
         'Age', 'Gender', 'Height', 'ICUType', 'Weight', 'Albumin', 'ALP', 'ALT', 'AST', 'Bilirubin', 'BUN',
@@ -71,7 +76,7 @@ class PhysioNet(object):
     labels = ["SAPS-I", "SOFA", "Length_of_stay", "Survival", "In-hospital_death"]
     labels_dict = {k: i for i, k in enumerate(labels)}
 
-    def __init__(self, root, train=True, download=False,
+    def __init__(self, root, download=False,
                  quantization=0.1, n_samples=None, device=torch.device("cpu")):
         # root: where data is stored
         # train: whether to load the training set or test set
@@ -81,31 +86,46 @@ class PhysioNet(object):
         # device: device to store the data
 
         self.root = root
-        self.train = train
+        # self.train = train
         self.device = device
         self.reduce = "average"
         self.quantization = quantization
+        self.blacklist = ['140501', '150649', '140936', '143656', '141264', '145611', '142998', '147514', '142731',
+                          '150309', '155655', '156254']
 
         if download:
-            self.download() # if download=True, attempt to download and process the dataset
+            self.download()  # if download=True, attempt to download and process the dataset
 
         # check if processed data exists. If not, raise an error unless user sets download=True
         if not self._check_exists():
             raise RuntimeError('Dataset not found. You can use download=True to download it')
 
         # depending on the train flag, choose the appropriate processed data file
-        if self.train:
-            data_file = self.training_file
-        else:
-            data_file = self.test_file
+        # if self.train:
+        #     data_file = self.training_file
+        # else:
+        #     data_file = self.test_file
 
         # load the data and labels from processed files
         if self.device == 'cpu':
-            self.data = torch.load(os.path.join(self.processed_folder, data_file), map_location='cpu', weights_only=False)
-            self.labels = torch.load(os.path.join(self.processed_folder, self.label_file), map_location='cpu', weights_only=False)
+            data_a = torch.load(os.path.join(self.processed_folder, self.set_a), map_location='cpu')
+            data_b = torch.load(os.path.join(self.processed_folder, self.set_b), map_location='cpu')
+            data_c = torch.load(os.path.join(self.processed_folder, self.set_c), map_location='cpu')
+            # labels_a = torch.load(os.path.join(self.processed_folder, self.label_file_a), map_location='cpu')
+            # labels_b = torch.load(os.path.join(self.processed_folder, self.label_file_b), map_location='cpu')
+            # labels_c = torch.load(os.path.join(self.processed_folder, self.label_file_c), map_location='cpu')
         else:
-            self.data = torch.load(os.path.join(self.processed_folder, data_file), weights_only=False)
-            self.labels = torch.load(os.path.join(self.processed_folder, self.label_file), weights_only=False)
+            data_a = torch.load(os.path.join(self.processed_folder, self.set_a))
+            data_b = torch.load(os.path.join(self.processed_folder, self.set_b))
+            data_c = torch.load(os.path.join(self.processed_folder, self.set_c))
+            # labels_a = torch.load(os.path.join(self.processed_folder, self.label_file_a))
+            # labels_b = torch.load(os.path.join(self.processed_folder, self.label_file_b))
+            # labels_c = torch.load(os.path.join(self.processed_folder, self.label_file_c))
+
+        self.data = data_a + data_b + data_c
+        # self.labels = labels_a + labels_b + labels_c
+        print("data shape", len(self.data))
+        # print("label shape:", len(self.labels))
 
         # if n_samples is specified, truncate the dataset to that number of samples
         if n_samples is not None:
@@ -121,6 +141,7 @@ class PhysioNet(object):
         os.makedirs(self.processed_folder, exist_ok=True)
 
         # Download outcome data
+        outcomes = {}
         for url in self.outcome_urls:
             filename = url.rpartition('/')[2]
             download_url(url, self.raw_folder, filename, None)
@@ -128,16 +149,16 @@ class PhysioNet(object):
             txtfile = os.path.join(self.raw_folder, filename)
             with open(txtfile) as f:
                 lines = f.readlines()
-                outcomes = {}
                 for l in lines[1:]:
                     l = l.rstrip().split(',')
-                    record_id, labels = l[0], np.array(l[1:]).astype(float)
-                    outcomes[record_id] = torch.Tensor(labels).to(self.device)
+                    if l[0] not in self.blacklist:
+                        record_id, labels = l[0], np.array(l[1:]).astype(float)
+                        outcomes[record_id] = torch.Tensor(labels).to(self.device)
 
-                torch.save(
-                    labels,
-                    os.path.join(self.processed_folder, filename.split('.')[0] + '.pt')
-                )
+        torch.save(
+            outcomes,
+            os.path.join(self.processed_folder, 'Outcomes.pt')
+        )
 
         for url in self.urls:
             filename = url.rpartition('/')[2]
@@ -152,55 +173,57 @@ class PhysioNet(object):
             patients = []
             total = 0
             for txtfile in os.listdir(dirname):
-                record_id = txtfile.split('.')[0]
-                with open(os.path.join(dirname, txtfile)) as f:
-                    lines = f.readlines()
-                    prev_time = 0
-                    tt = [0.]
-                    vals = [torch.zeros(len(self.params)).to(self.device)]
-                    mask = [torch.zeros(len(self.params)).to(self.device)]
-                    nobs = [torch.zeros(len(self.params))]
-                    for l in lines[1:]:
-                        total += 1
-                        time, param, val = l.split(',')
-                        # Time in hours
-                        time = float(time.split(':')[0]) + float(time.split(':')[1]) / 60.
-                        # round up the time stamps (up to 6 min by default)
-                        # used for speed -- we actually don't need to quantize it in Latent ODE
-                        time = round(time / self.quantization) * self.quantization
+                if txtfile.split('.')[0] not in self.blacklist:
+                    record_id = txtfile.split('.')[0]
+                    # print("record_id", record_id)
+                    with open(os.path.join(dirname, txtfile)) as f:
+                        lines = f.readlines()
+                        prev_time = 0
+                        tt = [0.]
+                        vals = [torch.zeros(len(self.params)).to(self.device)]
+                        mask = [torch.zeros(len(self.params)).to(self.device)]
+                        nobs = [torch.zeros(len(self.params))]
+                        for l in lines[1:]:
+                            total += 1
+                            time, param, val = l.split(',')
+                            # Time in hours
+                            time = float(time.split(':')[0]) + float(time.split(':')[1]) / 60.
+                            # round up the time stamps (up to 6 min by default)
+                            # used for speed -- we actually don't need to quantize it in Latent ODE
+                            time = round(time / self.quantization) * self.quantization
 
-                        if time != prev_time:
-                            tt.append(time)
-                            vals.append(torch.zeros(len(self.params)).to(self.device))
-                            mask.append(torch.zeros(len(self.params)).to(self.device))
-                            nobs.append(torch.zeros(len(self.params)).to(self.device))
-                            prev_time = time
+                            if time != prev_time:
+                                tt.append(time)
+                                vals.append(torch.zeros(len(self.params)).to(self.device))
+                                mask.append(torch.zeros(len(self.params)).to(self.device))
+                                nobs.append(torch.zeros(len(self.params)).to(self.device))
+                                prev_time = time
 
-                        if param in self.params_dict:
-                            # vals[-1][self.params_dict[param]] = float(val)
-                            n_observations = nobs[-1][self.params_dict[param]]
-                            if self.reduce == 'average' and n_observations > 0:
-                                prev_val = vals[-1][self.params_dict[param]]
-                                new_val = (prev_val * n_observations + float(val)) / (n_observations + 1)
-                                vals[-1][self.params_dict[param]] = new_val
+                            if param in self.params_dict:
+                                # vals[-1][self.params_dict[param]] = float(val)
+                                n_observations = nobs[-1][self.params_dict[param]]
+                                if self.reduce == 'average' and n_observations > 0:
+                                    prev_val = vals[-1][self.params_dict[param]]
+                                    new_val = (prev_val * n_observations + float(val)) / (n_observations + 1)
+                                    vals[-1][self.params_dict[param]] = new_val
+                                else:
+                                    vals[-1][self.params_dict[param]] = float(val)
+                                mask[-1][self.params_dict[param]] = 1
+                                nobs[-1][self.params_dict[param]] += 1
                             else:
-                                vals[-1][self.params_dict[param]] = float(val)
-                            mask[-1][self.params_dict[param]] = 1
-                            nobs[-1][self.params_dict[param]] += 1
-                        else:
-                            assert param == 'RecordID', 'Read unexpected param {}'.format(param)
-                tt = torch.tensor(tt).to(self.device)
-                vals = torch.stack(vals)
-                mask = torch.stack(mask)
+                                assert (param == 'RecordID' or param == ''), 'Read unexpected param {}'.format(param)
+                    tt = torch.tensor(tt).to(self.device)
+                    vals = torch.stack(vals)
+                    mask = torch.stack(mask)
 
-                labels = None
-                if record_id in outcomes:
-                    # Only training set has labels
-                    labels = outcomes[record_id]
-                    # Out of 5 label types provided for Physionet, take only the last one -- mortality
-                    labels = labels[4]
+                    labels = None
+                    if record_id in outcomes:
+                        # Only training set has labels
+                        labels = outcomes[record_id]
+                        # Out of 5 label types provided for Physionet, take only the last one -- mortality
+                        labels = labels[4]
 
-                patients.append((record_id, tt, vals, mask, labels))
+                    patients.append((record_id, tt, vals, mask, labels))
 
             torch.save(
                 patients,
@@ -229,17 +252,37 @@ class PhysioNet(object):
     def processed_folder(self):
         return os.path.join(self.root, self.__class__.__name__, 'processed')
 
+    # @property
+    # def training_file(self):
+    #     return 'set-a_{}.pt'.format(self.quantization)
+
+    # @property
+    # def test_file(self):
+    #     return 'set-b_{}.pt'.format(self.quantization)
+
     @property
-    def training_file(self):
+    def set_a(self):
         return 'set-a_{}.pt'.format(self.quantization)
 
     @property
-    def test_file(self):
+    def set_b(self):
         return 'set-b_{}.pt'.format(self.quantization)
 
     @property
-    def label_file(self):
+    def set_c(self):
+        return 'set-c_{}.pt'.format(self.quantization)
+
+    @property
+    def label_file_a(self):
         return 'Outcomes-a.pt'
+
+    @property
+    def label_file_b(self):
+        return 'Outcomes-b.pt'
+
+    @property
+    def label_file_c(self):
+        return 'Outcomes-c.pt'
 
     def __getitem__(self, index):
         return self.data[index]

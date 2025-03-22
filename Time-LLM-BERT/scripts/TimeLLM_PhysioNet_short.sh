@@ -1,11 +1,11 @@
 model_name=TimeLLM
 train_epochs=100
-learning_rate=0.01
+learning_rate=0.00001
 llama_layers=32
 
 master_port=2047
 num_process=1
-batch_size=16
+batch_size=2
 d_model=32
 d_ff=128
 
@@ -18,6 +18,7 @@ accelerate launch --mixed_precision bf16 --num_processes $num_process --main_pro
   --model_id PhysioNet_512_96 \
   --model $model_name \
   --data PhysioNet \
+  --prompt_domain 1 \
   --features M \
   --seq_len 2881 \
   --num_classes 2 \
@@ -38,8 +39,8 @@ accelerate launch --mixed_precision bf16 --num_processes $num_process --main_pro
   --llm_layers $llama_layers \
   --train_epochs $train_epochs \
   --model_comment $comment \
-  --patch_len 1024 \
-  --stride 512 \
+  --patch_len 32 \
+  --stride 16 \
   --n 8000 \
   --quantization 0.016 \
   --classif

@@ -229,30 +229,40 @@ def get_mimiciii_data(args):
 
 # q: Quantization factor for time steps. flag: A control flag that changes how the function returns the data loaders.
 def get_physionet_data(args, device, q, flag=1):
-    train_dataset_obj = PhysioNet('data/physionet', train=True,
-                                  quantization=q,
-                                  download=True, n_samples=min(10000, args.n),
-                                  device=device)
-    # Use custom collate_fn to combine samples with arbitrary time observations.
-    # Returns the dataset along with mask and time steps
-    test_dataset_obj = PhysioNet('data/physionet', train=False,
-                                 quantization=q,
-                                 download=True, n_samples=min(10000, args.n),
-                                 device=device)
+    # train_dataset_obj = PhysioNet('data/physionet', train=True,
+    #                               quantization=q,
+    #                               download=True, n_samples=min(10000, args.n),
+    #                               device=device)
+    # # Use custom collate_fn to combine samples with arbitrary time observations.
+    # # Returns the dataset along with mask and time steps
+    # test_dataset_obj = PhysioNet('data/physionet', train=False,
+    #                              quantization=q,
+    #                              download=True, n_samples=min(10000, args.n),
+    #                              device=device)
+    #
+    # # Combine and shuffle samples from physionet Train and physionet Test
+    # total_dataset = train_dataset_obj[:len(train_dataset_obj)]
+    #
+    # if not args.classif:
+    #     # Concatenate samples from original Train and Test sets
+    #     # Only 'training' physionet samples are have labels.
+    #     # Therefore, if we do classifiction task, we don't need physionet 'test' samples.
+    #     total_dataset = total_dataset + \
+    #                     test_dataset_obj[:len(test_dataset_obj)]
 
-    # Combine and shuffle samples from physionet Train and physionet Test
-    total_dataset = train_dataset_obj[:len(train_dataset_obj)]
+    total_dataset = PhysioNet('data/physionet',
+                              quantization=q,
+                              download=True,
+                              device=device)
 
-    if not args.classif:
-        # Concatenate samples from original Train and Test sets
-        # Only 'training' physionet samples are have labels.
-        # Therefore, if we do classifiction task, we don't need physionet 'test' samples.
-        total_dataset = total_dataset + \
-                        test_dataset_obj[:len(test_dataset_obj)]
     print(len(total_dataset))  # 4000
     # Shuffle and split total_dataset into train/test sets
-    train_data, test_data = model_selection.train_test_split(total_dataset, train_size=0.8,
+    train_data, temp_data = model_selection.train_test_split(total_dataset, train_size=0.8,
                                                              random_state=42, shuffle=True)
+    if args.classif:
+        # if classification task, we further split into train and validation sets
+        val_data, test_data = model_selection.train_test_split(temp_data, train_size=0.5,
+                                                                 random_state=42, shuffle=False)
 
     # tt: time steps, vals: observed values, mask: which values are observed
     record_id, tt, vals, mask, labels = train_data[0]
@@ -260,7 +270,7 @@ def get_physionet_data(args, device, q, flag=1):
     # n_samples = len(total_dataset)
     input_dim = vals.size(-1) # determine the number of features. vals: [T, D], where D is the number of features
     data_min, data_max = get_data_min_max(total_dataset, device) # Compute the minimum and maximum values across all features in the entire dataset
-    batch_size = min(min(len(train_dataset_obj), args.batch_size), args.n) # ensures the batch size isn't larger than the dataset or user-specified number
+    batch_size = min(len(train_data), args.batch_size) # ensures the batch size isn't larger than the dataset or user-specified number
     if flag:
         # combines variable-length time series into a single tensor, normalizing and preparing them for model input
         test_data_combined = variable_time_collate_fn(test_data, device, classify=args.classif,
@@ -268,8 +278,8 @@ def get_physionet_data(args, device, q, flag=1):
 
         if args.classif:
             # if classification task, we further split the training data into train and validation sets
-            train_data, val_data = model_selection.train_test_split(train_data, train_size=0.8,
-                                                                    random_state=11, shuffle=True)
+            # train_data, val_data = model_selection.train_test_split(train_data, train_size=0.8,
+            #                                                         random_state=11, shuffle=True)
             # collate training and validation sets, variable_time_collate_fn returns (data, labels)
             train_data_combined = variable_time_collate_fn(
                 train_data, device, classify=args.classif, data_min=data_min, data_max=data_max)
@@ -314,8 +324,8 @@ def get_physionet_data(args, device, q, flag=1):
                                                                                         data_min=data_min,
                                                                                         data_max=data_max))
 
-    attr_names = train_dataset_obj.params # get attribute names (parameter names) from training dataset object
-    data_objects = {"dataset_obj": train_dataset_obj,
+    attr_names = total_dataset.params # get attribute names (parameter names) from training dataset object
+    data_objects = {"dataset_obj": total_dataset,
                     "train_dataloader": train_dataloader,
                     "test_dataloader": test_dataloader,
                     "input_dim": input_dim, # number of features

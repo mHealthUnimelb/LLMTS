@@ -6,8 +6,10 @@ from einops import rearrange
 from peft import LoraConfig, TaskType, get_peft_model
 # from transformers import LlamaConfig, LlamaModel, LlamaTokenizer
 from models.GPT2_arch import AccustumGPT2Model
+from transformers import GPT2Tokenizer
 import math
 import numpy as np
+import os
 
 class multiTimeAttention(nn.Module):
 
@@ -323,7 +325,7 @@ class enc_mtan(nn.Module):
 
 class Encoder_PCA(nn.Module):
     def __init__(self, input_dim, word_embedding, hidden_dim=768, num_heads=1, num_encoder_layers=1, device='cpu',
-                 num_ref_points=128, latent_dim=32, learn_emb=True, patch_len=16, stride=8, num_ca_heads=1):
+                 num_ref_points=128, latent_dim=32, learn_emb=True, patch_len=16, stride=8, num_ca_heads=1, prompt_embeddings=None):
         super(Encoder_PCA, self).__init__()
         # self.linear = nn.Linear(input_dim, hidden_dim)
 
@@ -345,6 +347,10 @@ class Encoder_PCA(nn.Module):
 
         self.word_embedding = word_embedding.T
 
+        # add prompt for word token
+        self.word_embedding = torch.cat([prompt_embeddings.squeeze(0), self.word_embedding], dim=0)
+        print("word embedding shape: ", self.word_embedding.shape)
+
         self.num_patches = math.ceil((num_ref_points - patch_len) / stride) + 1
 
     def forward(self, x, time_steps):
@@ -362,6 +368,7 @@ class Encoder_PCA(nn.Module):
         # x = self.transformer_encoder(x.transpose(0, 1)).transpose(0, 1)
         # x = self.encoder(x.transpose(0, 1), time_steps).transpose(0, 1)
         x = self.encoder(x, time_steps)
+        print("x shape after encoder", x.shape)
 
         x_time = x
 
@@ -416,6 +423,7 @@ class Model(nn.Module):
                                                       output_hidden_states=True)  # loads a pretrained GPT-2 base model
         self.gpt2_text = AccustumGPT2Model.from_pretrained('gpt2', output_attentions=True,
                                                            output_hidden_states=True)  # loads a pretrained GPT-2 base model
+        self.tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
 
         self.gpt2.h = self.gpt2.h[:configs.gpt_layers]
         self.gpt2_text.h = self.gpt2_text.h[:configs.gpt_layers]
@@ -490,6 +498,18 @@ class Model(nn.Module):
         #     else:
         #         param.requires_grad = False
 
+        # prompt
+        # if configs.prompt:
+        prompt_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'prompts', f'{configs.data}.txt')
+        with open(prompt_file, 'r') as f:
+            prompt_text = f.read()
+        # tokenize the text to get input token IDs
+        inputs = self.tokenizer(prompt_text, return_tensors='pt')
+        input_ids = inputs["input_ids"]
+        self.prompt_embeddings = self.gpt2_text.wte(input_ids).to(device)
+        print("prompt_embeddings shape:", self.prompt_embeddings.shape)
+
+
         self.time_proj = nn.ModuleList(
             [nn.Linear(configs.d_model, configs.d_model, bias=False) for _ in range(configs.gpt_layers + 1)])
 
@@ -509,7 +529,7 @@ class Model(nn.Module):
                                     num_heads=configs.num_ca_heads, device=device,
                                     num_ref_points=configs.num_ref_points, latent_dim=configs.latent_dim,
                                     learn_emb=configs.learn_emb, patch_len=configs.patch_len, stride=configs.stride,
-                                    num_ca_heads=configs.num_ca_heads)
+                                    num_ca_heads=configs.num_ca_heads, prompt_embeddings=self.prompt_embeddings)
 
         # self.attention_pooling = AttentionPooling(configs.d_model)
         # self.gru = nn.GRU(configs.d_model, configs.d_model)
@@ -588,6 +608,13 @@ class Model(nn.Module):
         outputs_time1, outputs_text1 = self.in_layer(x, time_steps)
         print("outputs_time1 shape: ", outputs_time1.shape) # (128, 128, 768)
         print("outputs_text1 shape: ", outputs_text1.shape) # (128, 128, 768)
+
+        # add prompt
+        # batch_prompt_embeddings = self.prompt_embeddings.repeat(B, 1, 1)
+        # print("batch_prompt_embeddings shape", batch_prompt_embeddings.shape)
+        # outputs_time1 = torch.cat([batch_prompt_embeddings, outputs_time1], dim=1)
+        # outputs_text1 = torch.cat([batch_prompt_embeddings, outputs_text1], dim=1)
+        # print("outputs_time1 shape: ", outputs_time1.shape)
 
         outputs_time, intermidiate_feat_time = self.gpt2(inputs_embeds=outputs_time1)
         outputs_text, intermidiate_feat_text = self.gpt2_text(inputs_embeds=outputs_text1)

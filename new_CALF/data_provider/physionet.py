@@ -129,9 +129,9 @@ class PhysioNet(object):
         # print("label shape:", len(self.labels))
 
         # if n_samples is specified, truncate the dataset to that number of samples
-        # if n_samples is not None:
-        #     self.data = self.data[:n_samples]
-        #     self.labels = self.labels[:n_samples]
+        if n_samples is not None:
+            self.data = self.data[:n_samples]
+            self.labels = self.labels[:n_samples]
 
     def download(self):
         if self._check_exists():
@@ -156,11 +156,10 @@ class PhysioNet(object):
                         record_id, labels = l[0], np.array(l[1:]).astype(float)
                         outcomes[record_id] = torch.Tensor(labels).to(self.device)
 
-                print("labels", labels)
-                # torch.save(
-                #     labels,
-                #     os.path.join(self.processed_folder, filename.split('.')[0] + '.pt')
-                # )
+        torch.save(
+            outcomes,
+            os.path.join(self.processed_folder, 'Outcomes.pt')
+        )
 
         for url in self.urls:
             filename = url.rpartition('/')[2]
@@ -177,7 +176,7 @@ class PhysioNet(object):
             for txtfile in os.listdir(dirname):
                 if txtfile.split('.')[0] not in self.blacklist:
                     record_id = txtfile.split('.')[0]
-                    print("record_id", record_id)
+                    # print("record_id", record_id)
                     with open(os.path.join(dirname, txtfile)) as f:
                         lines = f.readlines()
                         prev_time = 0

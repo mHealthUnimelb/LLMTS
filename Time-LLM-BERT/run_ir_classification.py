@@ -7,7 +7,8 @@ from torch.optim import lr_scheduler
 from tqdm import tqdm
 from utils.tools_without_mark import cal_accuracy
 from torchmetrics.classification import MulticlassAveragePrecision
-from sklearn.metrics import precision_recall_curve, auc
+from sklearn.metrics import confusion_matrix, average_precision_score, ConfusionMatrixDisplay, precision_recall_curve, \
+    auc, roc_auc_score
 
 from models import Autoformer, DLinear, TimeLLM
 
@@ -19,7 +20,7 @@ import matplotlib.pyplot as plt
 import os
 
 os.environ['CURL_CA_BUNDLE'] = ''
-os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:64"
+# os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:64"
 
 # from utils.tools import del_files, EarlyStopping, adjust_learning_rate, vali, load_content
 from utils.tools_without_mark import del_files, EarlyStopping, adjust_learning_rate, vali, test, load_content
@@ -125,7 +126,7 @@ train_auprcs = []
 vali_auprcs = []
 test_auprcs = []
 
-auprc_metric = MulticlassAveragePrecision(num_classes=args.num_classes, average="macro")
+# auprc_metric = MulticlassAveragePrecision(num_classes=args.num_classes, average="macro")
 
 # def auprc_metric(num_class, probs, target):
 #     probs = probs.detach().cpu().numpy()
@@ -167,12 +168,19 @@ if args.is_training:
             args.des,
             args.num_classes, ii)
 
+        print("Initial memory allocated:", torch.cuda.memory_allocated() / (1024 ** 3))
+        print("Initial memory reserved:", torch.cuda.memory_reserved() / (1024 ** 3))
+
         train_data, train_loader = data_provider(args, 'train')
         vali_data, vali_loader = data_provider(args, 'val')
         test_data, test_loader = data_provider(args, 'test')
         dim = train_data.data_objects["input_dim"]
 
+        print("data_provider memory allocated:", torch.cuda.memory_allocated() / (1024 ** 3))
+        print("data_provider memory reserved:", torch.cuda.memory_reserved() / (1024 ** 3))
+
         args.content = load_content(args)
+        print("prompt", args.content)
 
         if args.model == 'Autoformer':
             model = Autoformer.Model(args).float()
@@ -180,6 +188,9 @@ if args.is_training:
             model = DLinear.Model(args).float()
         else:
             model = TimeLLM.Model(args).float()
+
+        print("model memory allocated:", torch.cuda.memory_allocated() / (1024 ** 3))
+        print("model memory reserved:", torch.cuda.memory_reserved() / (1024 ** 3))
 
         path = os.path.join(args.checkpoints,
                             setting + '-' + args.model_comment)  # unique checkpoint saving path
@@ -215,6 +226,9 @@ if args.is_training:
         train_loader, vali_loader, test_loader, model, model_optim, scheduler = accelerator.prepare(
             train_loader, vali_loader, test_loader, model, model_optim, scheduler)
 
+        print("data prepare memory allocated:", torch.cuda.memory_allocated() / (1024 ** 3))
+        print("data prepare memory reserved:", torch.cuda.memory_reserved() / (1024 ** 3))
+
         if args.use_amp:
             scaler = torch.cuda.amp.GradScaler()
 
@@ -233,12 +247,15 @@ if args.is_training:
                 iter_count += 1
                 model_optim.zero_grad()
 
-                batch_x = batch_x.float().to(accelerator.device)
+                batch_x = batch_x[:, :, :dim].float().to(accelerator.device)
                 batch_y = batch_y.squeeze().long().to(accelerator.device)
-                observed_data, observed_mask, observed_tp = batch_x[:, :, :dim], batch_x[:, :, dim:2 * dim], batch_x[:,
-                                                                                                             :, -1]
-                print("batch_x shape: ", batch_x.shape) # [24, 2881, 83]
-                print("batch_y shape: ", batch_y.shape) # [24]
+                # observed_data, observed_mask, observed_tp = batch_x[:, :, :dim], batch_x[:, :, dim:2 * dim], batch_x[:, :, -1]
+
+                print("batch_x shape: ", batch_x.shape)  # [24, 2881, 83]
+                print("batch_y shape: ", batch_y.shape)  # [24]
+
+                print("train batch data memory allocated:", torch.cuda.memory_allocated() / (1024 ** 3))
+                print("train batch data memory reserved:", torch.cuda.memory_reserved() / (1024 ** 3))
 
                 # # decoder input
                 # dec_inp = torch.zeros_like(batch_y[:, -args.pred_len:, :]).float().to(
@@ -257,6 +274,9 @@ if args.is_training:
                             outputs = model(batch_x, x_mark_enc=None, x_dec=None, x_mark_dec=None)
                             # outputs = model((torch.cat((observed_data, observed_mask), 2), observed_tp), x_mark_enc=None, x_dec=None, x_mark_dec=None)
 
+                        print("model output memory allocated:", torch.cuda.memory_allocated() / (1024 ** 3))
+                        print("model output memory reserved:", torch.cuda.memory_reserved() / (1024 ** 3))
+
                         # f_dim = -1 if args.features == 'MS' else 0
                         # outputs = outputs[:, -args.pred_len:, f_dim:]
                         # batch_y = batch_y[:, -args.pred_len:, f_dim:].to(accelerator.device)
@@ -269,6 +289,9 @@ if args.is_training:
                     else:
                         outputs = model(batch_x, x_mark_enc=None, x_dec=None, x_mark_dec=None)
                         # outputs = model((torch.cat((observed_data, observed_mask), 2), observed_tp), x_mark_enc=None, x_dec=None, x_mark_dec=None)
+
+                    print("model output memory allocated:", torch.cuda.memory_allocated() / (1024 ** 3))
+                    print("model output memory reserved:", torch.cuda.memory_reserved() / (1024 ** 3))
 
                     # f_dim = -1 if args.features == 'MS' else 0
                     # outputs = outputs[:, -args.pred_len:, f_dim:]
@@ -311,20 +334,35 @@ if args.is_training:
             # calculate accuracy
             train_accuracy = torch.mean((train_trues == train_predictions).float()).item()
             train_accuracies.append(train_accuracy)
+            # calculate AUROC
+            train_trues = train_trues.detach().cpu().numpy()
+            train_auc = roc_auc_score(train_trues,
+                                      train_probs.detach().cpu().float().numpy()[:,
+                                      1]) if not args.classify_pertp else 0.
+
             # calculate AUPRC
             # train_auprc = auprc_metric(args.num_classes, train_probs, train_trues)
-            train_auprc = auprc_metric(train_probs, train_trues)
+            # train_auprc = auprc_metric(train_probs, train_trues)
+            train_auprc = average_precision_score(train_trues, train_probs.detach().cpu().float().numpy()[:,
+                                                               1]) if not args.classify_pertp else 0.
             train_auprcs.append(train_auprc)
 
             train_loss = np.average(train_loss)
             train_losses.append(train_loss)
-            vali_loss, vali_accuracy, vali_auprc = vali(args, accelerator, model, vali_data, vali_loader, criterion,
-                                                        metric)
+            print("before vali memory allocated:", torch.cuda.memory_allocated() / (1024 ** 3))
+            print("before vali memory reserved:", torch.cuda.memory_reserved() / (1024 ** 3))
+            vali_loss, vali_accuracy, vali_auc, vali_auprc = vali(args, accelerator, model, vali_data, vali_loader,
+                                                                  criterion,
+                                                                  metric)
+            print("after vali memory allocated:", torch.cuda.memory_allocated() / (1024 ** 3))
+            print("after vali memory reserved:", torch.cuda.memory_reserved() / (1024 ** 3))
+
             vali_losses.append(vali_loss)
             vali_accuracies.append(vali_accuracy)
             vali_auprcs.append(vali_auprc)
-            test_loss, test_accuracy, test_auprc = vali(args, accelerator, model, test_data, test_loader, criterion,
-                                                        metric)
+            test_loss, test_accuracy, test_auc, test_auprc = vali(args, accelerator, model, test_data, test_loader,
+                                                                  criterion,
+                                                                  metric)
             test_losses.append(test_loss)
             test_accuracies.append(test_accuracy)
             test_auprcs.append(test_auprc)

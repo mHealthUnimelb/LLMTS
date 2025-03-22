@@ -252,7 +252,7 @@ def get_physionet_data(args, device, q, flag=1):
 
     total_dataset = PhysioNet('data/physionet',
                               quantization=q,
-                              download=True, n_samples=min(10000, args.n),
+                              download=True,
                               device=device)
 
     print(len(total_dataset))  # 4000
@@ -270,7 +270,7 @@ def get_physionet_data(args, device, q, flag=1):
     # n_samples = len(total_dataset)
     input_dim = vals.size(-1) # determine the number of features. vals: [T, D], where D is the number of features
     data_min, data_max = get_data_min_max(total_dataset, device) # Compute the minimum and maximum values across all features in the entire dataset
-    batch_size = min(min(len(train_data), args.batch_size), args.n) # ensures the batch size isn't larger than the dataset or user-specified number
+    batch_size = min(len(train_data), args.batch_size) # ensures the batch size isn't larger than the dataset or user-specified number
     if flag:
         # combines variable-length time series into a single tensor, normalizing and preparing them for model input
         test_data_combined = variable_time_collate_fn(test_data, device, classify=args.classif,
@@ -342,82 +342,7 @@ def get_physionet_data(args, device, q, flag=1):
     return data_objects # return all the prepared data and metadata as a dictionary
 
 
-# def variable_time_collate_fn(batch, device=torch.device("cpu"), classify=False, activity=False,
-#                              data_min=None, data_max=None):
-#     """
-#     Expects a batch of time series data in the form of (record_id, tt, vals, mask, labels) where
-#       - record_id is a patient id
-#       - tt is a 1-dimensional tensor containing T time values of observations.
-#       - vals is a (T, D) tensor containing observed values for D variables.
-#       - mask is a (T, D) tensor containing 1 where values were observed and 0 otherwise.
-#       - labels is a list of labels for the current patient, if labels are available. Otherwise None.
-#     Returns:
-#       combined_tt: The union of all time observations.
-#       combined_vals: (M, T, D) tensor containing the observed values.
-#       combined_mask: (M, T, D) tensor containing 1 where values were observed and 0 otherwise.
-#     """
-#     # - If `classify=False`, returns combined data only.
-#     # - If `classify=True`, returns a tuple of (combined_data, combined_labels).
-#     # - If `activity=True`, labels may be time-varying (shape [T, N]) instead of a single label per sample.
-#
-#     D = batch[0][2].shape[1] # the number of features
-#     # 'batch' is a tuple (record_id, tt, vals, mask, labels)
-#     # 'vals' is at index 2 and has shape [T, D]
-#     # extract D (the number of features) from this shape
-#
-#     # number of labels
-#     # If 'activity' is True, the 'labels' might be time-varying with shape [T, N].
-#     # Otherwise, we assume each sample has a single label => N = 1.
-#     N = batch[0][-1].shape[1] if activity else 1
-#     # find maximum sequence length
-#     # For each sample in the batch, ex[1] is 'tt' (time steps), shape [T]
-#     len_tt = [ex[1].size(0) for ex in batch]
-#     maxlen = np.max(len_tt)
-#
-#     enc_combined_tt = torch.zeros([len(batch), maxlen]).to(device)
-#     enc_combined_vals = torch.zeros([len(batch), maxlen, D]).to(device)
-#     enc_combined_mask = torch.zeros([len(batch), maxlen, D]).to(device)
-#
-#     if classify:
-#         if activity:
-#             # For activity data, the labels might be [T, N] for each sample
-#             # We need a 3D tensor: [batch_size, max_seq_len, N]
-#             combined_labels = torch.zeros([len(batch), maxlen, N]).to(device)
-#         else:
-#             combined_labels = torch.zeros([len(batch), N]).to(device)
-#
-#     # Copy each sample's data into these allocated zero-tensors
-#     for b, (record_id, tt, vals, mask, labels) in enumerate(batch):
-#         currlen = tt.size(0) # The length T of the current sample's time series
-#         enc_combined_tt[b, :currlen] = tt.to(device) # Copy the current sample’s time steps into 'enc_combined_tt' for positions [0..T-1]
-#         enc_combined_vals[b, :currlen] = vals.to(device) # Copy the sample's values into 'enc_combined_vals' in the first T slots
-#         enc_combined_mask[b, :currlen] = mask.to(device) # Copy the sample's mask to the first T slots
-#         if classify:
-#             if activity:
-#                 # For activity data, the shape of labels is [T, N],
-#                 # so we fill [b, 0..T-1, :] in combined_labels.
-#                 combined_labels[b, :currlen] = labels.to(device)
-#             else:
-#                 combined_labels[b] = labels.to(device)
-#
-#     if not activity:
-#         enc_combined_vals, _, _ = normalize_masked_data(enc_combined_vals, enc_combined_mask,
-#                                                         att_min=data_min, att_max=data_max)
-#
-#     if torch.max(enc_combined_tt) != 0.:
-#         # normalize time steps to be within [0, 1]
-#         enc_combined_tt = enc_combined_tt / torch.max(enc_combined_tt)
-#
-#     combined_data = torch.cat(
-#         (enc_combined_vals, enc_combined_mask, enc_combined_tt.unsqueeze(-1)), 2)
-#     # enc_combined_vals: [B, max_len, D], enc_combined_mask: [B, max_len, D], enc_combined_tt.unsqueeze(-1): [B, maxlen, 1]
-#     # after concatenation, shape is [B, maxlen, D+D+1], merge the normalized values, the binary mask, the (normalized) time steps
-#     if classify:
-#         return combined_data, combined_labels
-#     else:
-#         return combined_data
-
-def variable_time_collate_fn(batch, args, device=torch.device("cpu"), classify=False, activity=False,
+def variable_time_collate_fn(batch, device=torch.device("cpu"), classify=False, activity=False,
                              data_min=None, data_max=None):
     """
     Expects a batch of time series data in the form of (record_id, tt, vals, mask, labels) where
@@ -431,77 +356,152 @@ def variable_time_collate_fn(batch, args, device=torch.device("cpu"), classify=F
       combined_vals: (M, T, D) tensor containing the observed values.
       combined_mask: (M, T, D) tensor containing 1 where values were observed and 0 otherwise.
     """
-    D = batch[0][2].shape[1]
+    # - If `classify=False`, returns combined data only.
+    # - If `classify=True`, returns a tuple of (combined_data, combined_labels).
+    # - If `activity=True`, labels may be time-varying (shape [T, N]) instead of a single label per sample.
+
+    D = batch[0][2].shape[1] # the number of features
+    # 'batch' is a tuple (record_id, tt, vals, mask, labels)
+    # 'vals' is at index 2 and has shape [T, D]
+    # extract D (the number of features) from this shape
+
     # number of labels
+    # If 'activity' is True, the 'labels' might be time-varying with shape [T, N].
+    # Otherwise, we assume each sample has a single label => N = 1.
     N = batch[0][-1].shape[1] if activity else 1
+    # find maximum sequence length
+    # For each sample in the batch, ex[1] is 'tt' (time steps), shape [T]
     len_tt = [ex[1].size(0) for ex in batch]
     maxlen = np.max(len_tt)
+
     enc_combined_tt = torch.zeros([len(batch), maxlen]).to(device)
     enc_combined_vals = torch.zeros([len(batch), maxlen, D]).to(device)
     enc_combined_mask = torch.zeros([len(batch), maxlen, D]).to(device)
 
-    for b, (record_id, tt, vals, mask, labels) in enumerate(batch):
-        currlen = tt.size(0)
-        enc_combined_tt[b, :currlen] = tt.to(device)
-        enc_combined_vals[b, :currlen] = vals.to(device)
-        enc_combined_mask[b, :currlen] = mask.to(device)
-
-    combined_tt, inverse_indices = torch.unique(torch.cat([ex[1] for ex in batch]), sorted=True, return_inverse=True)
-    combined_tt = combined_tt.to(device)
-    combined_tt = combined_tt.unsqueeze(0).expand(len(batch), -1)
-    print(combined_tt.shape)
-
-    offset = 0
-    combined_vals = torch.zeros([len(batch), combined_tt.shape[1], D]).to(device)
-    combined_mask = torch.zeros([len(batch), combined_tt.shape[1], D]).to(device)
-
-    combined_labels = None
-    N_labels = 1
-
     if classify:
         if activity:
+            # For activity data, the labels might be [T, N] for each sample
+            # We need a 3D tensor: [batch_size, max_seq_len, N]
             combined_labels = torch.zeros([len(batch), maxlen, N]).to(device)
         else:
-            combined_labels = torch.zeros(len(batch), N_labels) + torch.tensor(float('nan'))
-            combined_labels = combined_labels.to(device=device)
+            combined_labels = torch.zeros([len(batch), N]).to(device)
 
+    # Copy each sample's data into these allocated zero-tensors
     for b, (record_id, tt, vals, mask, labels) in enumerate(batch):
-        tt = tt.to(device)
-        vals = vals.to(device)
-        mask = mask.to(device)
-        if labels is not None:
-            labels = labels.to(device)
-
-        indices = inverse_indices[offset:offset + len(tt)]
-        offset += len(tt)
-
-        combined_vals[b, indices] = vals
-        combined_mask[b, indices] = mask
-
-        if labels is not None:
-            if classify:
-                if activity:
-                    combined_labels[b, indices] = labels
-                else:
-                    combined_labels[b] = labels
+        currlen = tt.size(0) # The length T of the current sample's time series
+        enc_combined_tt[b, :currlen] = tt.to(device) # Copy the current sample’s time steps into 'enc_combined_tt' for positions [0..T-1]
+        enc_combined_vals[b, :currlen] = vals.to(device) # Copy the sample's values into 'enc_combined_vals' in the first T slots
+        enc_combined_mask[b, :currlen] = mask.to(device) # Copy the sample's mask to the first T slots
+        if classify:
+            if activity:
+                # For activity data, the shape of labels is [T, N],
+                # so we fill [b, 0..T-1, :] in combined_labels.
+                combined_labels[b, :currlen] = labels.to(device)
+            else:
+                combined_labels[b] = labels.to(device)
 
     if not activity:
-        combined_vals, _, _ = normalize_masked_data(combined_vals, combined_mask,
-                                                    att_min=data_min, att_max=data_max)
         enc_combined_vals, _, _ = normalize_masked_data(enc_combined_vals, enc_combined_mask,
                                                         att_min=data_min, att_max=data_max)
 
-    if torch.max(combined_tt) != 0.:
-        combined_tt = combined_tt / torch.max(combined_tt)
+    if torch.max(enc_combined_tt) != 0.:
+        # normalize time steps to be within [0, 1]
         enc_combined_tt = enc_combined_tt / torch.max(enc_combined_tt)
 
     combined_data = torch.cat(
-        (combined_vals, combined_mask, combined_tt.unsqueeze(-1)), 2)
-
+        (enc_combined_vals, enc_combined_mask, enc_combined_tt.unsqueeze(-1)), 2)
+    # enc_combined_vals: [B, max_len, D], enc_combined_mask: [B, max_len, D], enc_combined_tt.unsqueeze(-1): [B, maxlen, 1]
+    # after concatenation, shape is [B, maxlen, D+D+1], merge the normalized values, the binary mask, the (normalized) time steps
     if classify:
         return combined_data, combined_labels
     else:
         return combined_data
+
+# def variable_time_collate_fn(batch, args, device=torch.device("cpu"), classify=False, activity=False,
+#                              data_min=None, data_max=None):
+#     """
+#     Expects a batch of time series data in the form of (record_id, tt, vals, mask, labels) where
+#       - record_id is a patient id
+#       - tt is a 1-dimensional tensor containing T time values of observations.
+#       - vals is a (T, D) tensor containing observed values for D variables.
+#       - mask is a (T, D) tensor containing 1 where values were observed and 0 otherwise.
+#       - labels is a list of labels for the current patient, if labels are available. Otherwise None.
+#     Returns:
+#       combined_tt: The union of all time observations.
+#       combined_vals: (M, T, D) tensor containing the observed values.
+#       combined_mask: (M, T, D) tensor containing 1 where values were observed and 0 otherwise.
+#     """
+#     D = batch[0][2].shape[1]
+#     # number of labels
+#     N = batch[0][-1].shape[1] if activity else 1
+#     len_tt = [ex[1].size(0) for ex in batch]
+#     maxlen = np.max(len_tt)
+#     enc_combined_tt = torch.zeros([len(batch), maxlen]).to(device)
+#     enc_combined_vals = torch.zeros([len(batch), maxlen, D]).to(device)
+#     enc_combined_mask = torch.zeros([len(batch), maxlen, D]).to(device)
+#
+#     for b, (record_id, tt, vals, mask, labels) in enumerate(batch):
+#         currlen = tt.size(0)
+#         enc_combined_tt[b, :currlen] = tt.to(device)
+#         enc_combined_vals[b, :currlen] = vals.to(device)
+#         enc_combined_mask[b, :currlen] = mask.to(device)
+#
+#     combined_tt, inverse_indices = torch.unique(torch.cat([ex[1] for ex in batch]), sorted=True, return_inverse=True)
+#     combined_tt = combined_tt.to(device)
+#     combined_tt = combined_tt.unsqueeze(0).expand(len(batch), -1)
+#     print(combined_tt.shape)
+#
+#     offset = 0
+#     combined_vals = torch.zeros([len(batch), combined_tt.shape[1], D]).to(device)
+#     combined_mask = torch.zeros([len(batch), combined_tt.shape[1], D]).to(device)
+#
+#     combined_labels = None
+#     N_labels = 1
+#
+#     if classify:
+#         if activity:
+#             combined_labels = torch.zeros([len(batch), maxlen, N]).to(device)
+#         else:
+#             combined_labels = torch.zeros(len(batch), N_labels) + torch.tensor(float('nan'))
+#             combined_labels = combined_labels.to(device=device)
+#
+#     for b, (record_id, tt, vals, mask, labels) in enumerate(batch):
+#         tt = tt.to(device)
+#         vals = vals.to(device)
+#         mask = mask.to(device)
+#         if labels is not None:
+#             labels = labels.to(device)
+#
+#         indices = inverse_indices[offset:offset + len(tt)]
+#         offset += len(tt)
+#
+#         combined_vals[b, indices] = vals
+#         combined_mask[b, indices] = mask
+#
+#         if labels is not None:
+#             if classify:
+#                 if activity:
+#                     combined_labels[b, indices] = labels
+#                 else:
+#                     combined_labels[b] = labels
+#
+#     if not activity:
+#         combined_vals, _, _ = normalize_masked_data(combined_vals, combined_mask,
+#                                                     att_min=data_min, att_max=data_max)
+#         enc_combined_vals, _, _ = normalize_masked_data(enc_combined_vals, enc_combined_mask,
+#                                                         att_min=data_min, att_max=data_max)
+#
+#     if torch.max(combined_tt) != 0.:
+#         combined_tt = combined_tt / torch.max(combined_tt)
+#         enc_combined_tt = enc_combined_tt / torch.max(enc_combined_tt)
+#
+#     combined_data = torch.cat(
+#         (combined_vals, combined_mask, combined_tt.unsqueeze(-1)), 2)
+#
+#     if classify:
+#         return combined_data, combined_labels
+#     else:
+#         return combined_data
 
 
 def get_activity_data(args, device):

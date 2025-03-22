@@ -207,7 +207,7 @@ class Model(nn.Module):
             self.description = configs.content
         else:
             self.description = 'This database includes 25 long-term ECG recordings of human subjects with atrial fibrillation (mostly paroxysmal). Of these, 23 records include the two ECG signals.'
-
+        print("description", self.description)
         self.dropout = nn.Dropout(configs.dropout)
 
         self.patch_embedding = PatchEmbedding(
@@ -379,7 +379,6 @@ class Model(nn.Module):
 
             prompt.append(prompt_)
 
-        print(self.description)
         x_enc = x_enc.reshape(B, N, T).permute(0, 2, 1).contiguous()
 
         prompt = self.tokenizer(prompt, return_tensors="pt", padding=True, truncation=True, max_length=2048).input_ids

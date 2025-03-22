@@ -5,9 +5,9 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --time=00:20:00
+#SBATCH --time=04:00:00
 #SBATCH --gres=gpu:1
-#SBATCH --mem-per-cpu=40G
+#SBATCH --mem-per-cpu=60G
 
 module purge
 module load foss/2022a
@@ -15,6 +15,7 @@ module load mpi4py/3.1.4-Python-3.11.3
 module load Anaconda3/2022.10
 eval "$(conda shell.bash hook)"
 conda activate time_llm
+export NCCL_DEBUG=INFO
 bash ./scripts/TimeLLM_PhysioNet_short.sh
 
 ##DO NOT ADD/EDIT BEYOND THIS LINE##

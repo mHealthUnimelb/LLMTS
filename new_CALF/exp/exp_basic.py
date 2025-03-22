@@ -1,6 +1,6 @@
 import os
 import torch
-from models import original_CALF, CALF, CALF_mTAN_no_patch, CALF_regular, CALF_2, CALF_3, CALF_4, CALF_5, CALF_6, CALF_7, CALF_llama
+from models import original_CALF, CALF, CALF_mTAN_no_patch, CALF_regular, CALF_2, CALF_3, CALF_4, CALF_5, CALF_6, CALF_7, CALF_8, CALF_9, CALF_10, CALF_11, CALF_llama
 
 
 class Exp_Basic(object):
@@ -16,6 +16,10 @@ class Exp_Basic(object):
             "CALF_5": CALF_5,
             "CALF_6": CALF_6,
             "CALF_7": CALF_7,
+            "CALF_8": CALF_8,
+            "CALF_9": CALF_9,
+            "CALF_10": CALF_10,
+            "CALF_11": CALF_11,
             "CALF_llama": CALF_llama,
             "original_CALF": original_CALF
         }
