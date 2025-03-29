@@ -26,7 +26,7 @@ python run.py \
     --is_training 1 \
     --task_name classification \
     --model_id PhysioNet_$model'_'$seq_len'_'$pred_len \
-    --data P12 \
+    --data PhysioNet \
     --seq_len $seq_len \
     --label_len 0 \
     --pred_len $pred_len \
@@ -58,7 +58,6 @@ python run.py \
     --rec_hidden 128 \
     --quantization 0.016 \
     --classif \
-    --split_type random \
     --num_ca_heads 1 \
     --learn_emb \
     --patch_len 16 \

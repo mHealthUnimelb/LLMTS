@@ -13,6 +13,7 @@
 /CALF_copy/checkpoints/
 /new_CALF/slurm-*
 /new_CALF/checkpoints/
+/new_CALF/data/
 /llm4ir/slurm-*
 /S2IP-LLM/slurm-*
 /S2IP-LLM/Irregular_Classification/checkpoints

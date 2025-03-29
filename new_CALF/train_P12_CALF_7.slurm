@@ -21,17 +21,17 @@ model=CALF_7
 pred_len=0
 
 python run.py \
-    --root_path ./datasets/PhysioNet/ \
+    --root_path ./datasets/P12/ \
     --data_type irregular \
     --is_training 1 \
     --task_name classification \
-    --model_id PhysioNet_$model'_'$seq_len'_'$pred_len \
+    --model_id P12_$model'_'$seq_len'_'$pred_len \
     --data P12 \
     --seq_len $seq_len \
     --label_len 0 \
     --pred_len $pred_len \
     --batch_size 64 \
-    --learning_rate 0.00000005 \
+    --learning_rate 0.0000000005 \
     --lradj type1 \
     --train_epochs 100 \
     --d_model 768 \
@@ -50,7 +50,7 @@ python run.py \
     --task_loss ce \
     --word_embedding_path wte_pca_600.pt \
     --task_w 1.0 \
-    --feature_w 0.01 \
+    --feature_w 1.0 \
     --output_w 1.0 \
     --num_ref_points 256 \
     --n 8000 \

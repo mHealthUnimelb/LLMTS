@@ -156,8 +156,8 @@ def del_files(dir_path):
     shutil.rmtree(dir_path)
 
 
-def vali(args, accelerator, model, vali_data, vali_loader, criterion, metric):
-    dim = vali_data.data_objects["input_dim"]
+def vali(args, accelerator, model, input_dim, vali_loader, criterion, metric):
+    dim = input_dim
     total_loss = []
     all_logits = []
     trues = []
@@ -195,7 +195,7 @@ def vali(args, accelerator, model, vali_data, vali_loader, criterion, metric):
 
             print(f"outputs shape: {outputs.shape}, dtype: {outputs.dtype}")
             print(f"batch_y shape: {batch_y.shape}, dtype: {batch_y.dtype}")
-            print(torch.cuda.memory_summary(abbreviated=True))
+
             outputs, batch_y = accelerator.gather_for_metrics((outputs, batch_y))
             print("gather outputs and y memory allocated in vali:", torch.cuda.memory_allocated() / (1024 ** 3))
             print("gather outputs and y memory reserved in vali:", torch.cuda.memory_reserved() / (1024 ** 3))
@@ -320,7 +320,7 @@ def vali(args, accelerator, model, vali_data, vali_loader, criterion, metric):
 #         "Test Acc: {0:.7f} Test AUPRC: {1:.7f}".format(accuracy, auprc))
 #     return
 
-def test(args, model, setting, test=0):
+def test(args, model, test_loader, input_dim, setting, test=0):
     # test_data, test_loader = data_provider(args, 'test')
     # test_loader, model = accelerator.prepare(test_loader, model)
     # if test:
@@ -330,8 +330,7 @@ def test(args, model, setting, test=0):
     #     model.load_state_dict(torch.load(os.path.join('./checkpoints/' + setting + '-' + args.model_comment, 'checkpoint')))
     #     # accelerator.load_state(os.path.join('./checkpoints/' + setting + '-' + args.model_comment, 'checkpoint'))
 
-    test_data, test_loader = data_provider(args, 'test')
-    dim = test_data.data_objects["input_dim"]
+    dim = input_dim
     print("loading model")
     print(setting)
     model.load_state_dict(torch.load(os.path.join('./checkpoints/' + setting + '-' + args.model_comment, 'checkpoint'), map_location=torch.device('cuda:0')))
@@ -410,7 +409,7 @@ def test(args, model, setting, test=0):
     # return total_loss, total_mae_loss
     print("Test Acc: {0:.7f} Test AUROC: {1:.7f} Test AUPRC: {2:.7f}".format(accuracy, auc, auprc))
 
-    # result save
+    # resuqlt save
     folder_path = './results/' + setting + '/'
     if not os.path.exists(folder_path):
         os.makedirs(folder_path)

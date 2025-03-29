@@ -12,7 +12,7 @@ from data_provider.m4 import M4Dataset, M4Meta
 from data_provider.uea import subsample, interpolate_missing, Normalizer
 from data_provider.physionet import PhysioNet, get_data_min_max, variable_time_collate_fn2
 from sklearn import model_selection
-from data_provider.utils import *
+from data_provider.utils import get_data
 import warnings
 
 warnings.filterwarnings('ignore')
@@ -810,8 +810,9 @@ class Dataset_ECG(Dataset):
         return len(self.x_data)
 
 
-class Dataset_Physionet(Dataset):
-    def __init__(self, root_path, data_path=None, args=None, device='cpu', dataset_flag=1, flag='train', q=0, seq_len=2500, training_flag=1):
+class Dataset_PhysioNet(Dataset):
+    def __init__(self, root_path=None, data_path=None, args=None, device='cpu', dataset_flag=1, flag='train', q=0,
+                 seq_len=2500, training_flag=1):
         # train_dataset_obj = PhysioNet('data/physionet', train=True,
         #                               quantization=q,
         #                               download=True, n_samples=min(10000, args.n),
@@ -839,12 +840,12 @@ class Dataset_Physionet(Dataset):
         #                     test_dataset_obj[:len(test_dataset_obj)]
         print("total_dataset shape:", len(total_dataset))
         # Shuffle and split
-        train_data, test_data = model_selection.train_test_split(total_dataset, train_size=0.8,
-                                                                 random_state=42, shuffle=True)
+        train_data, test_data = model_selection.train_test_split(total_dataset, train_size=0.8, random_state=42,
+                                                                 shuffle=True)
         if args.classif:
             # if classification task, we further split into train and validation sets
-            val_data, test_data = model_selection.train_test_split(test_data, train_size=0.5,
-                                                                   random_state=42, shuffle=False)
+            val_data, test_data = model_selection.train_test_split(test_data, train_size=0.5, random_state=42,
+                                                                   shuffle=False)
 
         record_id, tt, vals, mask, labels = train_data[0]
 
@@ -917,36 +918,49 @@ class Dataset_Physionet(Dataset):
         print("time steps: ", self.time_steps)
 
 
+class Dataset_P12(Dataset):
+    def __init__(self, args=None, root_path=None, dataset='P12', device=torch.device("cpu"), q=0, upsampling_batch=True,
+                 split_type='random'):
+        self.data_objects = get_data(args, dataset, device, q, upsampling_batch, args.split_type)
+        self.class_names = ["survival", "death"]
+
+
+class Dataset_PAM(Dataset):
+    def __init__(self, args=None, root_path=None, dataset='PAM', device=torch.device("cpu"), q=0, upsampling_batch=True,
+                 split_type='random'):
+        self.data_objects = get_data(args, dataset, device, q, upsampling_batch, args.split_type)
+        self.class_names = [0, 1, 2, 3, 4, 5, 6, 7]
+
     # def __init__(self, root_path, data_path=None, flag='train', seq_len=2500, training_flag=1):
-        # data_obj = pd.read_pickle(root_path + "physionet.pkl")
-        # if training_flag == 1:
-        #     # load data
-        #     if flag == "train":
-        #         self.data_loader = data_obj["train_dataloader"]
-        #     elif flag == "val":
-        #         self.val_loader = data_obj["val_dataloader"]
-        #     elif flag == "test":
-        #         self.test_loader = data_obj["test_dataloader"]
-        # else:
-        #     self.test_loader = data_obj["test_dataloader"]
-        # self.dim = data_obj["input_dim"]
-        # # self.class_names = ['AFIB', 'AFL', 'J', 'N']
-        # self.max_seq_len = seq_len
-        # self.feature_dim = self.x_data.shape[1]
-        # print("x_data: ", self.x_data.shape)
+    # data_obj = pd.read_pickle(root_path + "physionet.pkl")
+    # if training_flag == 1:
+    #     # load data
+    #     if flag == "train":
+    #         self.data_loader = data_obj["train_dataloader"]
+    #     elif flag == "val":
+    #         self.val_loader = data_obj["val_dataloader"]
+    #     elif flag == "test":
+    #         self.test_loader = data_obj["test_dataloader"]
+    # else:
+    #     self.test_loader = data_obj["test_dataloader"]
+    # self.dim = data_obj["input_dim"]
+    # # self.class_names = ['AFIB', 'AFL', 'J', 'N']
+    # self.max_seq_len = seq_len
+    # self.feature_dim = self.x_data.shape[1]
+    # print("x_data: ", self.x_data.shape)
 
-        # # segment data
-        # self.segment_data(seq_len, strategy="discard")
-        # # print("x_data shape: ", self.x_data.shape)
-        # if flag == "test":
-        #     unique, counts = np.unique(self.y_data, return_counts=True)
-        #     test_distribution = dict(zip(unique, counts))
-        #     print("Test Set Class Distribution:", test_distribution)
+    # # segment data
+    # self.segment_data(seq_len, strategy="discard")
+    # # print("x_data shape: ", self.x_data.shape)
+    # if flag == "test":
+    #     unique, counts = np.unique(self.y_data, return_counts=True)
+    #     test_distribution = dict(zip(unique, counts))
+    #     print("Test Set Class Distribution:", test_distribution)
 
-        # # Convert to tensors
-        # self.x_data = self.x_data.transpose(0, 2, 1)
-        # self.x_data = torch.from_numpy(self.x_data)
-        # self.y_data = torch.tensor(self.y_data, dtype=torch.long)
+    # # Convert to tensors
+    # self.x_data = self.x_data.transpose(0, 2, 1)
+    # self.x_data = torch.from_numpy(self.x_data)
+    # self.y_data = torch.tensor(self.y_data, dtype=torch.long)
 
     # def segment_data(self, seq_len, strategy="discard"):
     #     num_samples, num_channels, total_length = self.x_data.shape

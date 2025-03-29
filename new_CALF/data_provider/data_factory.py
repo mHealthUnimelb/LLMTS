@@ -1,6 +1,7 @@
 from data_provider.data_loader import Dataset_ETT_hour, Dataset_ETT_minute, Dataset_Custom, Dataset_M4, PSMSegLoader, \
-    MSLSegLoader, SMAPSegLoader, SMDSegLoader, SWATSegLoader, UEAloader, Dataset_ECG, Dataset_Physionet
+    MSLSegLoader, SMAPSegLoader, SMDSegLoader, SWATSegLoader, UEAloader, Dataset_ECG, Dataset_PhysioNet, Dataset_P12, Dataset_PAM
 from data_provider.uea import collate_fn
+import torch
 from torch.utils.data import DataLoader
 
 data_dict = {
@@ -17,7 +18,9 @@ data_dict = {
     'SWAT': SWATSegLoader,
     'UEA': UEAloader,
     'ECG': Dataset_ECG,
-    'PhysioNet': Dataset_Physionet,
+    'PhysioNet': Dataset_PhysioNet,
+    'P12': Dataset_P12,
+    'PAM': Dataset_PAM,
 }
 
 
@@ -57,22 +60,19 @@ def data_provider(args, flag, vali=False):
         return data_set, data_loader
     elif args.task_name == 'classification':
         if args.data == 'PhysioNet':
-            data_set = Data(
-                root_path=args.root_path,
-                data_path=args.data_path,
-                args=args,
-                device='cpu',
-                flag=flag,
-                q=args.quantization,
-                training_flag=args.is_training
-            )
-            if flag == 'train':
-                data_loader = data_set.data_objects["train_dataloader"]
-            elif flag == 'val':
-                data_loader = data_set.data_objects["val_dataloader"]
-            elif flag == 'test':
-                data_loader = data_set.data_objects["test_dataloader"]
-            return data_set, data_loader
+            data_set = Data(args=args, device=torch.device("cpu"), q=args.quantization)
+            return data_set, None
+        if args.data == 'P12' or args.data == 'P19' or args.data == 'PAM':
+            data_set = Data(args=args, dataset=args.data, device=torch.device("cpu"), q=args.quantization, upsampling_batch=True,
+                            split_type='random')
+            # data_loader =
+            # if flag == 'train':
+            #     data_loader = data_set.data_objects["train_dataloader"]
+            # elif flag == 'val':
+            #     data_loader = data_set.data_objects["val_dataloader"]
+            # elif flag == 'test':
+            #     data_loader = data_set.data_objects["test_dataloader"]
+            return data_set, None
         drop_last = False
         data_set = Data(
             root_path=args.root_path,

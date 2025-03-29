@@ -61,6 +61,8 @@ parser.add_argument('--n', type=int, default=8000)
 parser.add_argument('--quantization', type=float, default=0.1, help="Quantization on the physionet dataset.")
 parser.add_argument('--classif', action='store_true', help="Include binary classification loss")
 parser.add_argument('--classify-pertp', action='store_true')
+parser.add_argument('--split_type', type=str, default='random', choices=['random', 'age', 'gender'],
+                        help='only use for P12 and P19')
 
 # forecasting task
 parser.add_argument('--seq_len', type=int, default=96, help='input sequence length')
@@ -145,6 +147,11 @@ test_auprcs = []
 #     # Return the average AUPRC across all classes
 #     return np.mean(auprcs)
 
+all_data, _ = data_provider(args, None)
+train_loader = all_data.data_objects["train_dataloader"]
+vali_loader = all_data.data_objects["val_dataloader"]
+test_loader = all_data.data_objects["test_dataloader"]
+dim = all_data.data_objects["input_dim"]
 
 if args.is_training:
     for ii in range(args.itr):
@@ -171,10 +178,9 @@ if args.is_training:
         print("Initial memory allocated:", torch.cuda.memory_allocated() / (1024 ** 3))
         print("Initial memory reserved:", torch.cuda.memory_reserved() / (1024 ** 3))
 
-        train_data, train_loader = data_provider(args, 'train')
-        vali_data, vali_loader = data_provider(args, 'val')
-        test_data, test_loader = data_provider(args, 'test')
-        dim = train_data.data_objects["input_dim"]
+        # train_data, train_loader = data_provider(args, 'train')
+        # vali_data, vali_loader = data_provider(args, 'val')
+        # test_data, test_loader = data_provider(args, 'test')
 
         print("data_provider memory allocated:", torch.cuda.memory_allocated() / (1024 ** 3))
         print("data_provider memory reserved:", torch.cuda.memory_reserved() / (1024 ** 3))
@@ -351,25 +357,23 @@ if args.is_training:
             train_losses.append(train_loss)
             print("before vali memory allocated:", torch.cuda.memory_allocated() / (1024 ** 3))
             print("before vali memory reserved:", torch.cuda.memory_reserved() / (1024 ** 3))
-            vali_loss, vali_accuracy, vali_auc, vali_auprc = vali(args, accelerator, model, vali_data, vali_loader,
-                                                                  criterion,
-                                                                  metric)
+            vali_loss, vali_accuracy, vali_auc, vali_auprc = vali(args, accelerator, model, dim, vali_loader,
+                                                                  criterion, metric)
             print("after vali memory allocated:", torch.cuda.memory_allocated() / (1024 ** 3))
             print("after vali memory reserved:", torch.cuda.memory_reserved() / (1024 ** 3))
 
             vali_losses.append(vali_loss)
             vali_accuracies.append(vali_accuracy)
             vali_auprcs.append(vali_auprc)
-            test_loss, test_accuracy, test_auc, test_auprc = vali(args, accelerator, model, test_data, test_loader,
-                                                                  criterion,
-                                                                  metric)
+            test_loss, test_accuracy, test_auc, test_auprc = vali(args, accelerator, model, dim, test_loader,
+                                                                  criterion, metric)
             test_losses.append(test_loss)
             test_accuracies.append(test_accuracy)
             test_auprcs.append(test_auprc)
             accelerator.print(
-                "Epoch: {0} | Train Loss: {1:.7f} Train Acc: {2:.7f} Train AUPRC: {3:7f} Vali Loss: {4:.7f} Vali Acc: {5:.7f} Vali AUPRC: {6:7f} Test Loss: {7:.7f} Test Acc: {8:.7f} Test AUPRC: {9:.7f}".format(
-                    epoch + 1, train_loss, train_accuracy, train_auprc, vali_loss, vali_accuracy, vali_auprc, test_loss,
-                    test_accuracy, test_auprc))
+                "Epoch: {0} | Train Loss: {1:.7f} Train Acc: {2:.7f} Train AUROC: {3:.7f} Train AUPRC: {4:.7f} Vali Loss: {5:.7f} Vali Acc: {6:.7f} Vali AUROC: {7:.7f} Vali AUPRC: {8:.7f} Test Loss: {9:.7f} Test Acc: {10:.7f} Test AUROC: {11:.7f} Test AUPRC: {12:.7f}".format(
+                    epoch + 1, train_loss, train_accuracy, train_auc, train_auprc, vali_loss, vali_accuracy, vali_auc,
+                    vali_auprc, test_loss, test_accuracy, test_auc, test_auprc))
 
             early_stopping(vali_loss, model, path)
             if early_stopping.early_stop:
@@ -506,4 +510,4 @@ else:
     else:
         model = TimeLLM.Model(args).float()
 
-    test(args, model, setting)
+    test(args, model, test_loader, dim, setting)

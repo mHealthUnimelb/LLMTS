@@ -8,7 +8,7 @@ from sklearn.preprocessing import StandardScaler
 from utils.timefeatures import time_features
 from data_provider.m4 import M4Dataset, M4Meta
 from data_provider.physionet import PhysioNet, get_data_min_max, variable_time_collate_fn2
-from data_provider.utils import *
+import data_provider.utils
 import warnings
 import torch
 
@@ -568,3 +568,9 @@ class Dataset_Physionet(Dataset):
         self.data_objects = data_objects
         self.class_names = ["survival", "death"]
         print("time steps: ", self.time_steps)
+
+class Dataset_P12(Dataset):
+    def __init__(self, args=None, root_path=None, dataset='P12', device=torch.device("cpu"), q=0, upsampling_batch=True,
+                 split_type='random'):
+        self.data_objects = data_provider.utils.get_data(args, dataset, device, q, upsampling_batch, args.split_type)
+        self.class_names = ["survival", "death"]
