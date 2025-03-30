@@ -12,7 +12,7 @@ from data_provider.m4 import M4Dataset, M4Meta
 from data_provider.uea import subsample, interpolate_missing, Normalizer
 from data_provider.physionet import PhysioNet, get_data_min_max, variable_time_collate_fn2
 from sklearn import model_selection
-from data_provider.utils import get_data
+from data_provider.utils import get_data, variable_time_collate_fn
 import warnings
 
 warnings.filterwarnings('ignore')
@@ -840,12 +840,12 @@ class Dataset_PhysioNet(Dataset):
         #                     test_dataset_obj[:len(test_dataset_obj)]
         print("total_dataset shape:", len(total_dataset))
         # Shuffle and split
-        train_data, test_data = model_selection.train_test_split(total_dataset, train_size=0.8, random_state=42,
-                                                                 shuffle=True)
+        train_data, test_data = model_selection.train_test_split(total_dataset, train_size=0.8,
+                                                                 random_state=0, shuffle=True)
         if args.classif:
             # if classification task, we further split into train and validation sets
-            val_data, test_data = model_selection.train_test_split(test_data, train_size=0.5, random_state=42,
-                                                                   shuffle=False)
+            val_data, test_data = model_selection.train_test_split(test_data, train_size=0.5,
+                                                                   random_state=0, shuffle=False)
 
         record_id, tt, vals, mask, labels = train_data[0]
 

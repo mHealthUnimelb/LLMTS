@@ -26,12 +26,12 @@ python run.py \
     --is_training 1 \
     --task_name classification \
     --model_id PhysioNet_$model'_'$seq_len'_'$pred_len \
-    --data P12 \
+    --data PhysioNet \
     --seq_len $seq_len \
     --label_len 0 \
     --pred_len $pred_len \
     --batch_size 64 \
-    --learning_rate 0.00000005 \
+    --learning_rate 0.00005 \
     --lradj type1 \
     --train_epochs 100 \
     --d_model 768 \
