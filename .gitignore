@@ -4,6 +4,7 @@
 /Time-LLM-BERT/checkpoints/
 /Time-LLM-BERT/dataset/
 /Time-LLM-BERT/slurm-*
+/Time-LLM-BERT/data/
 /Time-LLM-new/checkpoints/
 /Time-LLM-new/dataset/
 /Time-LLM-new/slurm-*

@@ -497,7 +497,7 @@ def get_data(args, dataset, device, q, upsampling_batch, split_type, flag=1):
                                   download=True,
                                   device=device)
         PT_dict = np.load('./data/P12data/processed_data/PTdict_list.npy', allow_pickle=True)
-        idx_train, idx_val, idx_test = np.load('./data/P12data/splits/phy12_split1.npy', allow_pickle=True)
+        idx_train, idx_val, idx_test = np.load('./data/P12data/splits/phy12_split5.npy', allow_pickle=True)
     elif dataset == 'P19':
         PT_dict = np.load('../P19data/processed_data/PT_dict_list_6.npy', allow_pickle=True)
         labels_ts = np.load('../P19data/processed_data/labels_ts.npy', allow_pickle=True)

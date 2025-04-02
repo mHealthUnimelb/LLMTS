@@ -17,7 +17,7 @@ conda activate calf
 export CUDA_LAUNCH_BLOCKING=1
 
 seq_len=2500
-model=CALF_7
+model=CALF_13
 pred_len=0
 
 python run.py \
@@ -30,8 +30,8 @@ python run.py \
     --seq_len $seq_len \
     --label_len 0 \
     --pred_len $pred_len \
-    --batch_size 128 \
-    --learning_rate 0.00000005 \
+    --batch_size 32 \
+    --learning_rate 0.000000005 \
     --lradj type1 \
     --train_epochs 100 \
     --d_model 768 \
@@ -52,7 +52,7 @@ python run.py \
     --task_w 1.0 \
     --feature_w 0.01 \
     --output_w 1.0 \
-    --num_ref_points 128 \
+    --num_ref_points 256 \
     --n 8000 \
     --latent_dim 384 \
     --rec_hidden 128 \

@@ -419,6 +419,92 @@ def get_physionet_data(args, device, q, flag=1):
 #     else:
 #         return combined_data
 
+def preprocess_P12(PT_dict, arr_outcomes):
+    """
+    Process a list of patient records (PT_dict) and outcome values (arr_outcomes).
+    Each patient record is assumed to have:
+      - 'id': a record identifier (string)
+      - 'static': a tuple of 5 static variables
+      - 'arr': a numpy.ndarray of shape (T, 36) for T time steps
+      - 'time': a numpy.ndarray of shape (T, 1) with time stamps (dynamic times)
+      - 'length': the number T of valid time steps in arr and time
+
+    The output for each patient is a tuple:
+      (record_id, tt, vals, mask, outcome)
+    where:
+      - tt is a 1D tensor of time stamps. A new initial time stamp 0 is prepended for the static row.
+      - vals is a 2D tensor of shape ((length + 1), 41) where the first row is the static data
+        (5 static variables and 36 zeros) and the remaining rows are from 'arr' padded on the left
+        with 5 zeros (static variables).
+      - mask is built in a similar fashion: for the static row, the mask is 1 for the first 5 entries
+        and 0 for the remaining 36; for dynamic rows, we compute the nonzero indicator from 'arr' and
+        pad with 5 zeros on the left (static variables).
+      - outcome is a tensor converted from arr_outcomes.
+    """
+    total = []
+    for i, patient in enumerate(PT_dict):
+        length = patient['length']
+        record_id = patient['id']
+
+        # # process static features (time = 0)
+        # static_features = torch.tensor(patient['static'], dtype=torch.float32)  # shape: (5,)
+        # static_row = torch.cat([static_features, torch.zeros(36, dtype=torch.float32)])  # shape: (41,)
+        #
+        # # For dynamic features, get the measurement array and pad with 5 zeros at the beginning.
+        # arr_dynamic = torch.tensor(patient['arr'][:length, :], dtype=torch.float32)  # shape: (length, 36)
+        # dynamic_vals = torch.cat([torch.zeros((length, 5), dtype=torch.float32), arr_dynamic],
+        #                          dim=1)  # shape: (length, 41)
+        #
+        # # concatenate static and dynamic features
+        # vals = torch.cat([static_row.unsqueeze(0), dynamic_vals], dim=0)  # shape: (length+1, 41)
+
+        # prepare the values array of shape [length+1, 5 (static) + 36 (dynamic) = 41]
+        vals = torch.zeros((length + 1, 41), dtype=torch.float32)
+
+        # fill row 0 (time = 0) with static variables in columns 0..4
+        static_vars = torch.tensor(patient['static'], dtype=torch.float32)  # shape [5]
+        vals[0, :5] = static_vars
+
+        # fill rows [1..length] in columns [5..40] with the dynamic features
+        dynamic_vars = torch.tensor(patient['arr'][:length, :], dtype=torch.float32)  # shape [length, 36]
+        vals[1:, 5:] = dynamic_vars
+
+        # tt = torch.squeeze(torch.tensor(patient['time'][:length]), 1)
+        dynamic_tt = torch.squeeze(torch.tensor(patient['time'][:length]), 1)
+        tt = torch.zeros(length + 1, dtype=torch.float32)
+        tt[1:] = dynamic_tt
+        # vals = torch.tensor(patient['arr'][:length, :], dtype=torch.float32)
+
+        # # dynamic features
+        # m = np.zeros(shape=patient['arr'][:length, :].shape)
+        # m[patient['arr'][:length, :].nonzero()] = 1
+        # dynamic_mask = torch.tensor(m, dtype=torch.float32)  # shape: (length, 36)
+        # dynamic_mask = torch.cat([torch.zeros((length, 5), dtype=torch.float32), dynamic_mask],
+        #                          dim=1)  # shape: (length, 41)
+        # # static mask
+        # static_mask = torch.cat([torch.ones(5, dtype=torch.float32), torch.zeros(36, dtype=torch.float32)])
+        # mask = torch.cat([static_mask.unsqueeze(0), dynamic_mask], dim=0)  # shape: (length+1, 41)
+
+        # mask
+        mask = torch.zeros((length + 1, 41), dtype=torch.float32)
+
+        # row 0, columns 0..4 are the static variables (mark these as present)
+        mask[0, :5] = 1.0
+
+        # for the time-series portion, copy the nonzero positions
+        arr_np = patient['arr'][:length, :]  # shape [length, 36]
+        mask_np = np.zeros_like(arr_np)
+        mask_np[arr_np.nonzero()] = 1
+        # put mask_np into columns [5..40] of rows [1..length]
+        mask[1:, 5:] = torch.tensor(mask_np, dtype=torch.float32)
+
+        # mask = torch.tensor(m, dtype=torch.float32)
+        outcome = torch.tensor(arr_outcomes[i][-1], dtype=torch.float32)
+        total.append((record_id, tt, vals, mask, outcome))
+
+    return total
+
+
 def preprocess_P19(PT_dict, arr_outcomes, labels_ts):
     total = []
     for i, patient in enumerate(PT_dict):
@@ -494,6 +580,7 @@ def random_sample_8(ytrain, B, replace=False):
         [idx0_batch, idx1_batch, idx2_batch, idx3_batch, idx4_batch, idx5_batch, idx6_batch, idx7_batch], axis=0)
     return idx
 
+
 def balanced_batch_sampler(train_data, true_labels, batch_size, n_classes):
     """
         Creates an upsampled training dataset with balanced batches.
@@ -559,14 +646,20 @@ def balanced_batch_sampler(train_data, true_labels, batch_size, n_classes):
 
     return upsampled_train_data
 
+
 def get_data(args, dataset, device, q, upsampling_batch, split_type, flag=1):
     print("upsampling_batch", upsampling_batch)
     print("split_type", split_type)
     if dataset == 'P12':
-        total_dataset = PhysioNet('data/physionet',
-                                  quantization=q,
-                                  download=True,
-                                  device=device)
+        # total_dataset = PhysioNet('data/physionet',
+        #                           quantization=q,
+        #                           download=True,
+        #                           device=device)
+        PT_dict = np.load('./data/P12data/processed_data/PTdict_list.npy', allow_pickle=True)
+        arr_outcomes = np.load('./data/P12data/processed_data/arr_outcomes.npy', allow_pickle=True)
+        idx_train, idx_val, idx_test = np.load('./data/P12data/splits/phy12_split1.npy', allow_pickle=True)
+
+        total_dataset = preprocess_P12(PT_dict, arr_outcomes)
     elif dataset == 'P19':
         PT_dict = np.load('../P19data/processed_data/PT_dict_list_6.npy', allow_pickle=True)
         labels_ts = np.load('../P19data/processed_data/labels_ts.npy', allow_pickle=True)
@@ -591,10 +684,26 @@ def get_data(args, dataset, device, q, upsampling_batch, split_type, flag=1):
 
     print('len(total_dataset):', len(total_dataset))
 
-    if split_type == 'random':
-        # Shuffle and split
-        train_data, test_data = model_selection.train_test_split(total_dataset, train_size=0.9,
-                                                                 shuffle=True)  # 80% train, 10% validation, 10% test
+    # if split_type == 'random':
+    #     # Shuffle and split
+    #     train_data, test_data = model_selection.train_test_split(total_dataset, train_size=0.9,
+    #                                                              shuffle=True)  # 80% train, 10% validation, 10% test
+
+    train_data = [total_dataset[i] for i in idx_train]
+    val_data = [total_dataset[i] for i in idx_val]
+    test_data = [total_dataset[i] for i in idx_test]
+    # train_data = []
+    # val_data = []
+    # test_data = []
+
+    # for i in total_dataset:
+    #     if i[0] in idx_train:
+    #         train_data.append(i)
+    #     elif i[0] in idx_val:
+    #         val_data.append(i)
+    #     elif i[0] in idx_test:
+    #         test_data.append(i)
+
     # elif split_type == 'age' or split_type == 'gender':
     #     if dataset == 'P12':
     #         prefix = 'mtand'
@@ -637,9 +746,12 @@ def get_data(args, dataset, device, q, upsampling_batch, split_type, flag=1):
 
     if flag:
         if args.classif:
-            if split_type == 'random':
-                train_data, val_data = model_selection.train_test_split(train_data, train_size=0.8889,
-                                                                        shuffle=False)  # 80% train, 10% validation, 10% test
+            # if split_type == 'random':
+            #     train_data, val_data = model_selection.train_test_split(train_data, train_size=0.8889,
+            #                                                             shuffle=False)  # 80% train, 10% validation, 10% test
+            print("train len:", len(train_data))
+            print("val len:", len(val_data))
+            print("test len:", len(test_data))
             # elif split_type == 'age' or split_type == 'gender':
             #     val_data, test_data = model_selection.train_test_split(test_data, train_size=0.5, shuffle=False)
 
@@ -785,6 +897,7 @@ def get_data(args, dataset, device, q, upsampling_batch, split_type, flag=1):
             val_data_combined, batch_size=batch_size, shuffle=False)
         data_objects["val_dataloader"] = val_dataloader
     return data_objects  # return all the prepared data and metadata as a dictionary
+
 
 
 def variable_time_collate_fn(batch, args, device=torch.device("cpu"), classify=False, activity=False,

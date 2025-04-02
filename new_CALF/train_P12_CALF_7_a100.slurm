@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH --job-name="calf"
 #SBATCH --account="punim2341"
-#SBATCH --partition=gpu-a100-short
+#SBATCH --partition=gpu-a100
 #SBATCH --nodes=1
-#SBATCH --time=04:00:00
+#SBATCH --time=01:00:00
 #SBATCH --gres=gpu:1
 #SBATCH --ntasks=8
 #SBATCH --ntasks-per-node=8
@@ -52,7 +52,7 @@ python run.py \
     --task_w 1.0 \
     --feature_w 0.01 \
     --output_w 1.0 \
-    --num_ref_points 128 \
+    --num_ref_points 256 \
     --n 8000 \
     --latent_dim 384 \
     --rec_hidden 128 \

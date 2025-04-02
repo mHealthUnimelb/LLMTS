@@ -61,12 +61,6 @@ def data_provider(args, flag, vali=False):
     elif args.task_name == 'classification':
         if args.data == 'PhysioNet':
             data_set = Data(args=args, device=torch.device("cpu"), q=args.quantization)
-            # if flag == 'train':
-            #     data_loader = data_set.data_objects["train_dataloader"]
-            # elif flag == 'val':
-            #     data_loader = data_set.data_objects["val_dataloader"]
-            # elif flag == 'test':
-            #     data_loader = data_set.data_objects["test_dataloader"]
             return data_set, None
         if args.data == 'P12' or args.data == 'P19' or args.data == 'PAM':
             data_set = Data(args=args, dataset=args.data, device=torch.device("cpu"), q=args.quantization, upsampling_batch=True,

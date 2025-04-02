@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH --job-name="calf"
 #SBATCH --account="punim2341"
-#SBATCH --partition=gpu-a100
+#SBATCH --partition=gpu-a100-short
 #SBATCH --nodes=1
-#SBATCH --time=10:00:00
+#SBATCH --time=04:00:00
 #SBATCH --gres=gpu:1
 #SBATCH --ntasks=8
 #SBATCH --ntasks-per-node=8
@@ -61,8 +61,8 @@ python run.py \
     --split_type random \
     --num_ca_heads 1 \
     --learn_emb \
-    --patch_len 16 \
-    --stride 8
+    --patch_len 32 \
+    --stride 16
 
 ##DO NOT ADD/EDIT BEYOND THIS LINE##
 ##Job monitor command to list the resource usage
