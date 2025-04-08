@@ -734,7 +734,9 @@ def get_data(args, dataset, device, q, upsampling_batch, split_type, flag=1):
                                                                                         data_max=data_max))
 
     data_objects = {"dataset_obj": {},
+                    "train_data": train_data,
                     "train_dataloader": train_dataloader,
+                    "test_data": test_data,
                     "test_dataloader": test_dataloader,
                     "input_dim": input_dim,  # number of features
                     "n_train_batches": len(train_dataloader),  # number of batches in train
@@ -746,6 +748,7 @@ def get_data(args, dataset, device, q, upsampling_batch, split_type, flag=1):
         # if classification, also create and store a validation DataLoader
         val_dataloader = DataLoader(
             val_data_combined, batch_size=batch_size, shuffle=False)
+        data_objects["val_data"] = val_data
         data_objects["val_dataloader"] = val_dataloader
     return data_objects  # return all the prepared data and metadata as a dictionary
 

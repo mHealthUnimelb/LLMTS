@@ -30,7 +30,7 @@ python run.py \
     --seq_len $seq_len \
     --label_len 0 \
     --pred_len $pred_len \
-    --batch_size 128 \
+    --batch_size 64 \
     --learning_rate 0.00005 \
     --lradj type1 \
     --train_epochs 100 \

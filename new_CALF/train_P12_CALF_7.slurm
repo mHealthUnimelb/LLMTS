@@ -30,7 +30,7 @@ python run.py \
     --seq_len $seq_len \
     --label_len 0 \
     --pred_len $pred_len \
-    --batch_size 128 \
+    --batch_size 64 \
     --learning_rate 0.00000005 \
     --lradj type1 \
     --train_epochs 100 \
@@ -52,7 +52,7 @@ python run.py \
     --task_w 1.0 \
     --feature_w 0.01 \
     --output_w 1.0 \
-    --num_ref_points 128 \
+    --num_ref_points 256 \
     --n 8000 \
     --latent_dim 384 \
     --rec_hidden 128 \
