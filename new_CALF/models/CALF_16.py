@@ -1,4 +1,5 @@
 # first encode, then patching, add variable-wise attention
+# use kmeans to find best word
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -10,6 +11,44 @@ from transformers import GPT2Tokenizer
 import math
 import numpy as np
 import os
+from sklearn.cluster import MiniBatchKMeans
+
+
+class VocabClusterer:
+    def __init__(self, num_clusters=1000, random_state=42):
+        """
+        num_clusters: how many clusters to use for partitioning the vocab
+        """
+        self.num_clusters = num_clusters
+        self.random_state = random_state
+        self.kmeans = None
+        self.cluster_assignments = None
+        self.cluster_centers = None
+
+    def fit(self, word_embeddings: torch.Tensor):
+        """
+        word_embeddings: [vocab_size, embed_dim] (as a CPU or GPU tensor).
+        We run KMeans on CPU, so convert to numpy if necessary.
+        """
+        vocab_size, embed_dim = word_embeddings.shape
+
+        # Move to CPU for sklearn
+        embeddings_np = word_embeddings.cpu().detach().numpy()
+        self.kmeans = MiniBatchKMeans(n_clusters=self.num_clusters, batch_size=1024,
+                                      random_state=self.random_state)
+        self.kmeans.fit(embeddings_np)
+
+        self.cluster_assignments = self.kmeans.labels_  # np.array, shape [vocab_size]
+        centers_np = self.kmeans.cluster_centers_  # shape [num_clusters, embed_dim]
+
+        # Convert cluster centers back to torch
+        self.cluster_centers = torch.tensor(centers_np, dtype=word_embeddings.dtype)
+        print(f"[VocabClusterer] Fitted k-means with {self.num_clusters} clusters.")
+
+    def get_cluster_members(self, cluster_id: int) -> np.ndarray:
+        """ Return all token_ids assigned to a given cluster. """
+        return np.where(self.cluster_assignments == cluster_id)[0]
+
 
 class multiTimeAttention(nn.Module):
 
@@ -28,15 +67,16 @@ class multiTimeAttention(nn.Module):
 
     def attention(self, query, key, value, mask=None, dropout=None):
         "Compute 'Scaled Dot Product Attention'"
-        print(f"attention query shape: {query.shape}, key shape: {key.shape}, value shape: {value.shape}, mask shape: {mask.shape}")
+        print(
+            f"attention query shape: {query.shape}, key shape: {key.shape}, value shape: {value.shape}, mask shape: {mask.shape}")
         # attention query shape: torch.Size([1, 1, 128, 128]), key shape: torch.Size([128, 1, 190, 128]), value shape: torch.Size([128, 1, 190, 82]), mask shape: torch.Size([128, 1, 190, 82])
         dim = value.size(-1)
         d_k = query.size(-1)
         scores = torch.matmul(query, key.transpose(-2, -1)) \
                  / math.sqrt(d_k)
         scores = scores.unsqueeze(-1).repeat_interleave(dim, dim=-1)
-        print("scores shape: ", scores.shape) # (128, 1, 128, 190, 82)
-        print("mask shape: ", mask.shape) # (128, 1, 190, 82)
+        print("scores shape: ", scores.shape)  # (128, 1, 128, 190, 82)
+        print("mask shape: ", mask.shape)  # (128, 1, 190, 82)
         if mask is not None:
             scores = scores.masked_fill(mask.unsqueeze(-3) == 0, -1e9)
         p_attn = F.softmax(scores, dim=-2)
@@ -49,7 +89,7 @@ class multiTimeAttention(nn.Module):
         print(
             f"forward query shape: {query.shape}, key shape: {key.shape}, value shape: {value.shape}, mask shape: {mask.shape}")
         batch, seq_len, dim = value.size()
-        print(f"batch: {batch}, seq_len: {seq_len}, dim: {dim}") # 128, 190, 768
+        print(f"batch: {batch}, seq_len: {seq_len}, dim: {dim}")  # 128, 190, 768
         if mask is not None:
             # Same mask applied to all h heads.
             mask = mask.unsqueeze(1)
@@ -185,7 +225,7 @@ class enc_mtan(nn.Module):
 
     def learn_time_embedding(self, tt):
         tt = tt.to(self.device)
-        print("tt shape: ", tt.shape) # (128, 2, 100)   (1, 256)
+        print("tt shape: ", tt.shape)  # (128, 2, 100)   (1, 256)
         tt = tt.unsqueeze(-1)
         out2 = torch.sin(self.periodic(tt))
         out1 = self.linear(tt)
@@ -296,7 +336,8 @@ class enc_mtan(nn.Module):
 
         # Add patch positional embeddings to key and query
         # patch positional embeddings
-        patch_positions = torch.arange(self.num_patches, device=self.device).unsqueeze(0).repeat(batch_size, 1)  # Shape: [batch_size, num_patches]
+        patch_positions = torch.arange(self.num_patches, device=self.device).unsqueeze(0).repeat(batch_size,
+                                                                                                 1)  # Shape: [batch_size, num_patches]
         patch_pos_emb = self.time_embedding(patch_positions, out.shape[2]).to(
             self.device)  # Shape: [batch_size, num_patches, embed_time]
         out += patch_pos_emb
@@ -323,9 +364,11 @@ class enc_mtan(nn.Module):
         # return self.classifier(out.squeeze(0))
         return out
 
+
 class Encoder_PCA(nn.Module):
     def __init__(self, input_dim, word_embedding, hidden_dim=768, num_heads=1, num_encoder_layers=1, device='cpu',
-                 num_ref_points=128, latent_dim=32, learn_emb=True, patch_len=16, stride=8, num_ca_heads=1, prompt_embeddings=None):
+                 num_ref_points=128, latent_dim=32, learn_emb=True, patch_len=16, stride=8, num_ca_heads=1,
+                 prompt_embeddings=None, num_clusters=10000, top_k=1000):
         super(Encoder_PCA, self).__init__()
         # self.linear = nn.Linear(input_dim, hidden_dim)
 
@@ -345,24 +388,56 @@ class Encoder_PCA(nn.Module):
 
         self.cross_attention = nn.MultiheadAttention(embed_dim=hidden_dim, num_heads=num_ca_heads)
 
-        self.word_embedding = word_embedding.T
+        self.tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
 
-        # add prompt for word token
-        self.word_embedding = torch.cat([prompt_embeddings.squeeze(0), self.word_embedding], dim=0)
-        print("word embedding shape: ", self.word_embedding.shape)
+        self.num_clusters = num_clusters
+        self.top_k = top_k
+
+        self.word_embeddings = word_embedding
+
+        self.vocab_cluster = VocabClusterer(num_clusters=self.num_clusters)
+        self.vocab_cluster.fit(self.word_embeddings)
+
+        # self.word_embedding = word_embedding.T
+
+        self.prompt_embeddings = prompt_embeddings
 
         self.num_patches = math.ceil((num_ref_points - patch_len) / stride) + 1
 
+    def reduce_vocab_with_cluster(self, query_emb, top_clusters=20, top_k=50):
+        cluster_centers = self.vocab_cluster.cluster_centers.to(query_emb.device)  # [num_clusters, embed_dim]
+
+        # Coarse step: find top cluster(s)
+        # (Here we just do dot product for similarity; you could do L2 distance or cos sim.)
+        sims = torch.matmul(query_emb, cluster_centers.T)  # shape [num_clusters]
+        top_vals, top_ids = torch.topk(sims, k=top_clusters, dim=-1)
+        print("top_ids", top_ids.shape)
+        chosen_clusters = torch.unique(top_ids.view(-1)).cpu().numpy().tolist()
+        print("chosen_clusters", len(chosen_clusters), chosen_clusters)
+
+        # Fine step: collect all tokens from chosen cluster(s), pick top_k by dot product
+        candidate_token_ids = []
+        for c in chosen_clusters:
+            member_ids = self.vocab_cluster.get_cluster_members(c)
+            candidate_token_ids.append(member_ids)
+        candidate_token_ids = np.concatenate(candidate_token_ids)  # shape [some_cluster_size]
+
+        # Dot product with each candidate
+        candidate_embeddings = self.word_embeddings[candidate_token_ids].to(
+            query_emb.device)  # [cluster_size, embed_dim]
+        fine_sims = torch.matmul(query_emb, candidate_embeddings.T)  # [cluster_size]
+        _, topk_indices = torch.topk(fine_sims, k=min(top_k, len(candidate_token_ids)), dim=-1)
+        print("topk_indices", topk_indices.shape)
+        topk_indices = torch.unique(topk_indices.view(-1))
+        chosen_token_ids = candidate_token_ids[topk_indices.cpu().numpy()]
+
+        return chosen_token_ids  # shape [top_k]
+
     def forward(self, x, time_steps):
         B = x.shape[0]
-        if self.word_embedding.ndim == 2:
-            self.word_embedding = self.word_embedding.repeat(B, 1, 1)
-        elif self.word_embedding.shape[0] != B:
-            self.word_embedding = self.word_embedding[0].repeat(B, 1, 1)
-        print("word embedding shape: ", self.word_embedding.shape)
 
         x = rearrange(x, 'b m l -> b l m')
-        print("x shape: ", x.shape) # (128, 82, 190)  (128, 190, 82)
+        print("x shape: ", x.shape)  # (128, 82, 190)  (128, 190, 82)
         # x = self.linear(x)
 
         # x = self.transformer_encoder(x.transpose(0, 1)).transpose(0, 1)
@@ -370,10 +445,29 @@ class Encoder_PCA(nn.Module):
         x = self.encoder(x, time_steps)
         print("x shape after encoder", x.shape)
 
+        x_pooled = x.mean(dim=1)
+        chosen_token_ids = self.reduce_vocab_with_cluster(query_emb=x_pooled, top_clusters=5000, top_k=self.top_k)
+        print("chosen_token_ids", chosen_token_ids)
+        word_embedding = self.word_embeddings[chosen_token_ids].to(x.device)
+        print("word_embedding shape", word_embedding.shape)
+
+        token_list = self.tokenizer.convert_ids_to_tokens(chosen_token_ids.tolist())
+        print("Token representations:", token_list)
+
+        # add prompt for word token
+        word_embedding = torch.cat([self.prompt_embeddings.squeeze(0), word_embedding], dim=0)
+        print("word embedding shape: ", word_embedding.shape)
+
+        if word_embedding.ndim == 2:
+            word_embedding = word_embedding.repeat(B, 1, 1)
+        elif word_embedding.shape[0] != B:
+            word_embedding = word_embedding[0].repeat(B, 1, 1)
+        print("word embedding shape: ", word_embedding.shape)
+
         x_time = x
 
         q = x.transpose(0, 1)
-        k = v = self.word_embedding.transpose(0, 1)
+        k = v = word_embedding.transpose(0, 1)
         x, w_ = self.cross_attention(q, k, v)
         print("weights shape: ", w_.shape)
 
@@ -425,6 +519,8 @@ class Model(nn.Module):
                                                            output_hidden_states=True)  # loads a pretrained GPT-2 base model
         self.tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
 
+        self.word_embeddings = self.gpt2_text.wte.state_dict()['weight'].to(device)
+
         self.gpt2.h = self.gpt2.h[:configs.gpt_layers]
         self.gpt2_text.h = self.gpt2_text.h[:configs.gpt_layers]
         self.gpt2 = get_peft_model(self.gpt2, peft_config)
@@ -471,8 +567,8 @@ class Model(nn.Module):
         # self.llama = get_peft_model(self.llama, peft_config)
         # self.llama_text = get_peft_model(self.llama_text, peft_config)
 
-        word_embedding = torch.tensor(torch.load(configs.word_embedding_path)).to(device=device)
-        print("word_embedding_path: ", configs.word_embedding_path)
+        # word_embedding = torch.tensor(torch.load(configs.word_embedding_path)).to(device=device)
+        # print("word_embedding_path: ", configs.word_embedding_path)
 
         for i, (name, param) in enumerate(self.gpt2.named_parameters()):
             if 'ln' in name or 'wpe' in name or 'lora' in name:
@@ -509,7 +605,6 @@ class Model(nn.Module):
         self.prompt_embeddings = self.gpt2_text.wte(input_ids).to(device)
         print("prompt_embeddings shape:", self.prompt_embeddings.shape)
 
-
         self.time_proj = nn.ModuleList(
             [nn.Linear(configs.d_model, configs.d_model, bias=False) for _ in range(configs.gpt_layers + 1)])
 
@@ -524,8 +619,8 @@ class Model(nn.Module):
         #     [nn.Linear(configs.d_model, configs.d_model, bias=False) for _ in
         #      range(self.llama_config.num_hidden_layers + 1)])
 
-        print("config.dim: ", configs.dim) # 41
-        self.in_layer = Encoder_PCA(configs.dim, word_embedding, hidden_dim=configs.d_model,
+        print("config.dim: ", configs.dim)  # 41
+        self.in_layer = Encoder_PCA(configs.dim, self.word_embeddings, hidden_dim=configs.d_model,
                                     num_heads=configs.num_ca_heads, device=device,
                                     num_ref_points=configs.num_ref_points, latent_dim=configs.latent_dim,
                                     learn_emb=configs.learn_emb, patch_len=configs.patch_len, stride=configs.stride,
@@ -609,8 +704,8 @@ class Model(nn.Module):
         x = rearrange(x, 'b l m -> b m l')
 
         outputs_time1, outputs_text1 = self.in_layer(x, time_steps)
-        print("outputs_time1 shape: ", outputs_time1.shape) # (128, 128, 768)
-        print("outputs_text1 shape: ", outputs_text1.shape) # (128, 128, 768)
+        print("outputs_time1 shape: ", outputs_time1.shape)  # (128, 128, 768)
+        print("outputs_text1 shape: ", outputs_text1.shape)  # (128, 128, 768)
 
         # encoder-only classifier head
         encoder_output = outputs_time1.reshape(B, -1)
@@ -631,8 +726,8 @@ class Model(nn.Module):
         # llama_output_text = self.llama_text(inputs_embeds=outputs_text1, output_hidden_states=True)
         # outputs_text = llama_output_text.last_hidden_state
 
-        print("outputs_time shape: ", outputs_time.shape) # (128, 128, 768)
-        print("outputs_text shape: ", outputs_text.shape) # (128, 128, 768)
+        print("outputs_time shape: ", outputs_time.shape)  # (128, 128, 768)
+        print("outputs_text shape: ", outputs_text.shape)  # (128, 128, 768)
 
         outputs_time += outputs_time1
         outputs_text += outputs_text1
@@ -649,13 +744,13 @@ class Model(nn.Module):
         #     self.text_proj[idx](feat) for idx, feat in enumerate(llama_output_text.hidden_states)
         # )
 
-        print("outputs_time shape: ", outputs_time.shape) # (128, 128, 768)
-        print("outputs_text shape: ", outputs_text.shape) # (128, 128, 768)
+        print("outputs_time shape: ", outputs_time.shape)  # (128, 128, 768)
+        print("outputs_text shape: ", outputs_text.shape)  # (128, 128, 768)
         outputs_time = outputs_time.reshape(B, -1)
         outputs_text = outputs_text.reshape(B, -1)
 
-        print("outputs_time shape: ", outputs_time.shape) # 128, 98304
-        print("outputs_text shape: ", outputs_text.shape) # 128, 98304
+        print("outputs_time shape: ", outputs_time.shape)  # 128, 98304
+        print("outputs_text shape: ", outputs_text.shape)  # 128, 98304
         outputs_time = self.out_layer(outputs_time)
         outputs_text = self.out_layer(outputs_text)
 

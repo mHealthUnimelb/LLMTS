@@ -1,3 +1,4 @@
+# record encoder_only metrics
 from data_provider.data_factory import data_provider
 from exp.exp_basic import Exp_Basic
 from utils.tools import EarlyStopping, adjust_learning_rate, cal_accuracy
@@ -49,9 +50,9 @@ class Exp_IR_Classification(Exp_Basic):
         self.vali_auprcs = []
         self.test_auprcs = []
         self.hook = Hook()
-        # self.handle = self.model.in_layer.register_forward_hook(self.hook.hook_fn)
-        # self.cross_attention_handle = self.model.in_layer.cross_attention.register_forward_hook(
-        #     self.hook.attention_hook_fn)
+        self.handle = self.model.in_layer.register_forward_hook(self.hook.hook_fn)
+        self.cross_attention_handle = self.model.in_layer.cross_attention.register_forward_hook(
+            self.hook.attention_hook_fn)
         # self.all_data, _ = self._get_data(flag=None)
         # self.train_loader = self.all_data.data_objects["train_dataloader"]
         # self.vali_loader = self.all_data.data_objects["val_dataloader"]
@@ -179,11 +180,34 @@ class Exp_IR_Classification(Exp_Basic):
 
         # monitored_layer_name = "gpt2.h.0.attn.c_attn.weight"
 
+        # linear schedule function for dynamic weights for encoder_only loss and llm loss
+        def get_dynamic_weights(epoch, total_epochs, enc_high=0.8, enc_low=0.2, llm_low=0.2, llm_high=0.8):
+            """
+                Interpolates linearly between:
+                - encoder_only_w: from enc_high -> enc_low
+                - llm_w: from llm_low -> llm_high
+                as epoch goes from 0 -> (total_epochs-1).
+            """
+            frac = min(epoch / float(total_epochs - 1), 1.0)
+            encoder_w = enc_high - (enc_high - enc_low) * frac
+            llm_w = llm_low + (llm_high - llm_low) * frac
+            return encoder_w, llm_w
+
         for epoch in range(self.args.train_epochs):
+            # dynamic schedule
+            encoder_w, llm_w = get_dynamic_weights(epoch, self.args.train_epochs,
+                                                   enc_high=0.8, enc_low=0.2,
+                                                   llm_low=0.2, llm_high=0.8)
+            criterion.encoder_only_w = encoder_w
+            criterion.llm_w = llm_w
+
+            print(f"Epoch {epoch + 1} => encoder_only_w: {encoder_w:.3f}, llm_w: {llm_w:.3f}")
+
             iter_count = 0
             train_loss = []
             train_preds = []
             train_trues = []
+            encoder_only_preds = []
 
             self.model.train()
             epoch_time = time.time()
@@ -222,6 +246,7 @@ class Exp_IR_Classification(Exp_Basic):
                 loss = criterion(outputs, label.long().squeeze(-1))
                 train_loss.append(loss.item())
 
+                encoder_only_preds.append(outputs["encoder_only"])
                 train_preds.append(outputs["outputs_time"])
                 train_trues.append(label)
 
@@ -256,14 +281,18 @@ class Exp_IR_Classification(Exp_Basic):
             self.train_losses.append(train_loss)
 
             train_preds = torch.cat(train_preds, 0)
+            encoder_only_preds = torch.cat(encoder_only_preds, 0)
             train_trues = torch.cat(train_trues, 0)
             train_probs = torch.nn.functional.softmax(train_preds)
+            encoder_only_probs = torch.nn.functional.softmax(encoder_only_preds)
             train_predictions = torch.argmax(train_probs, dim=1)
+            encoder_only_predictions = torch.argmax(encoder_only_probs, dim=1)
             train_trues = train_trues.flatten()
             # calculate AUPRC
             # train_auprc = self._select_metric(train_probs, train_trues)
             # calculate accuracy
             correct = (train_predictions == train_trues).float()
+            encoder_only_correct = (encoder_only_predictions == train_trues).float()
             train_trues = train_trues.detach().cpu().numpy()
             if self.args.data == 'P12' or self.args.data == 'P19' or self.args.data == 'eICU' or self.args.data == 'PhysioNet':
                 train_auc = roc_auc_score(train_trues,
@@ -272,16 +301,24 @@ class Exp_IR_Classification(Exp_Basic):
                 train_auprc = average_precision_score(train_trues, train_probs.detach().cpu().numpy()[:,
                                                                    1]) if not self.args.classify_pertp else 0.
                 train_accuracy = correct.mean().item()
+                encoder_only_auc = roc_auc_score(train_trues,
+                                                 encoder_only_probs.detach().cpu().numpy()[:,
+                                                 1]) if not self.args.classify_pertp else 0.
+                encoder_only_auprc = average_precision_score(train_trues, encoder_only_probs.detach().cpu().numpy()[:,
+                                                                          1]) if not self.args.classify_pertp else 0.
+                encoder_only_accuracy = encoder_only_correct.mean().item()
                 self.train_auprcs.append(train_auprc)
                 self.train_accuracies.append(train_accuracy)
 
-                vali_loss, vali_accuracy, vali_auprc, vali_auc = self.vali(self.args, self.vali_loader,
-                                                                           self._select_vali_criterion())
+                vali_loss, vali_accuracy, vali_auprc, vali_auc, vali_encoder_only_acc, vali_encoder_only_auprc, vali_encoder_only_auc = self.vali(
+                    self.args, self.vali_loader,
+                    self._select_vali_criterion())
                 self.vali_losses.append(vali_loss)
                 self.vali_accuracies.append(vali_accuracy)
                 self.vali_auprcs.append(vali_auprc)
-                test_loss, test_accuracy, test_auprc, test_auc = self.vali(self.args, self.test_loader,
-                                                                           self._select_vali_criterion())
+                test_loss, test_accuracy, test_auprc, test_auc, test_encoder_only_acc, test_encoder_only_auprc, test_encoder_only_auc = self.vali(
+                    self.args, self.test_loader,
+                    self._select_vali_criterion())
                 self.test_losses.append(test_loss)
                 self.test_accuracies.append(test_accuracy)
                 self.test_auprcs.append(test_auprc)
@@ -290,6 +327,13 @@ class Exp_IR_Classification(Exp_Basic):
                     "Epoch: {0}, Steps: {1} | Train Loss: {2:.3f} Train Acc: {3:.3f} Train AUPRC: {4:.3f} Train AUC: {5:.3f} Vali Loss: {6:.3f} Vali Acc: {7:.3f} Vali AUPRC: {8:.3f} Vali AUC: {9:.3f} Test Loss: {10:.3f} Test Acc: {11:.3f} Test AUPRC: {12:.3f} Test AUC: {13:.3f}"
                     .format(epoch + 1, train_steps, train_loss, train_accuracy, train_auprc, train_auc, vali_loss,
                             vali_accuracy, vali_auprc, vali_auc, test_loss, test_accuracy, test_auprc, test_auc))
+                print(
+                    "Epoch: {0}, Steps: {1} | Encoder only | Train Loss: {2:.3f} Train Acc: {3:.3f} Train AUPRC: {4:.3f} Train AUC: {5:.3f} Vali Loss: {6:.3f} Vali Acc: {7:.3f} Vali AUPRC: {8:.3f} Vali AUC: {9:.3f} Test Loss: {10:.3f} Test Acc: {11:.3f} Test AUPRC: {12:.3f} Test AUC: {13:.3f}"
+                    .format(epoch + 1, train_steps, train_loss, encoder_only_accuracy, encoder_only_auprc,
+                            encoder_only_auc,
+                            vali_loss,
+                            vali_encoder_only_acc, vali_encoder_only_auprc, vali_encoder_only_auc, test_loss,
+                            test_encoder_only_acc, test_encoder_only_auprc, test_encoder_only_auc))
             elif self.args.data == 'PAM':
                 train_auc = roc_auc_score(self._one_hot(train_trues),
                                           train_probs.detach().cpu().numpy()) if not self.args.classify_pertp else 0.
@@ -346,6 +390,7 @@ class Exp_IR_Classification(Exp_Basic):
     def vali(self, args, vali_loader, criterion):
         total_loss = []
         preds = []
+        encoder_only_preds = []
         trues = []
         dim = self.all_data.data_objects["input_dim"]
 
@@ -362,20 +407,26 @@ class Exp_IR_Classification(Exp_Basic):
                 outputs = self.model(torch.cat((observed_data, observed_mask), 2), observed_tp)["outputs_time"]
 
                 pred = outputs.detach()
+                encoder_only_pred = self.model(torch.cat((observed_data, observed_mask), 2), observed_tp)[
+                    "encoder_only"]
                 loss = criterion(pred, label.long().squeeze(-1))
                 total_loss.append(loss.cpu().numpy())
 
                 preds.append(outputs.detach())
+                encoder_only_preds.append(encoder_only_pred.detach())
                 trues.append(label)
 
         total_loss = np.average(total_loss)
 
         preds = torch.cat(preds, 0)
+        encoder_only_preds = torch.cat(encoder_only_preds, 0)
         trues = torch.cat(trues, 0)
         # print(f'{vali_data.x_data.shape} shape: {preds.shape} {trues.shape}')
         # print('test shape:', preds.shape, trues.shape)
         probs = torch.nn.functional.softmax(preds)  # (total_samples, num_classes) est. prob. for each class and sample
+        encoder_only_probs = torch.nn.functional.softmax(encoder_only_preds)
         predictions = torch.argmax(probs, dim=1).cpu().numpy()  # (total_samples,) int class index for each sample
+        encoder_only_predictions = torch.argmax(encoder_only_probs, dim=1).cpu().numpy()
         trues = trues.flatten()
         # auprc = self._select_metric(probs, trues)
         trues = trues.cpu().numpy()
@@ -383,6 +434,10 @@ class Exp_IR_Classification(Exp_Basic):
         if args.data == 'P12' or args.data == 'P19' or args.data == 'eICU' or args.data == 'PhysioNet':
             auc = roc_auc_score(trues, probs.cpu().numpy()[:, 1]) if not args.classify_pertp else 0.
             auprc = average_precision_score(trues, probs.cpu().numpy()[:, 1]) if not args.classify_pertp else 0.
+            encoder_only_auc = roc_auc_score(trues,
+                                             encoder_only_probs.cpu().numpy()[:, 1]) if not args.classify_pertp else 0.
+            encoder_only_auprc = average_precision_score(trues, encoder_only_probs.cpu().numpy()[:,
+                                                                1]) if not args.classify_pertp else 0.
         elif args.data == 'PAM':
             auc = roc_auc_score(self._one_hot(trues), probs.cpu().numpy()) if not args.classify_pertp else 0.
             auprc = average_precision_score(self._one_hot(trues),
@@ -393,6 +448,7 @@ class Exp_IR_Classification(Exp_Basic):
                                   average='macro', ) if not args.classify_pertp else 0.
             F1 = 2 * (precision * recall) / (precision + recall) if not args.classify_pertp else 0.
         accuracy = cal_accuracy(predictions, trues)
+        encoder_only_accuracy = cal_accuracy(encoder_only_predictions, trues)
 
         # Saving true labels and predictions
         np.savetxt('./results/vali_trues.txt', trues, fmt='%d')
@@ -400,7 +456,7 @@ class Exp_IR_Classification(Exp_Basic):
 
         self.model.train()
         if args.data == 'P12' or args.data == 'P19' or args.data == 'eICU' or args.data == 'PhysioNet':
-            return total_loss, accuracy, auprc, auc
+            return total_loss, accuracy, auprc, auc, encoder_only_accuracy, encoder_only_auprc, encoder_only_auc
         elif args.data == 'PAM':
             return total_loss, accuracy, precision, recall, F1
 
@@ -431,12 +487,12 @@ class Exp_IR_Classification(Exp_Basic):
                                                                                                              :, -1]
 
                 outputs = self.model(torch.cat((observed_data, observed_mask), 2), observed_tp)["outputs_time"]
-                # outputs_time1, outputs_text1 = self.hook.output  # store the embedding
-                # cross_attention_weights.append(self.hook.attention_weights.cpu())
-                # print("attention shape: ", self.hook.attention_weights.cpu().shape)
+                outputs_time1, outputs_text1 = self.hook.output  # store the embedding
+                cross_attention_weights.append(self.hook.attention_weights.cpu())
+                print("attention shape: ", self.hook.attention_weights.cpu().shape)
 
-                # time_embeddings.append(outputs_time1.cpu())
-                # text_embeddings.append(outputs_text1.cpu())
+                time_embeddings.append(outputs_time1.cpu())
+                text_embeddings.append(outputs_text1.cpu())
 
                 preds.append(outputs.detach())
                 trues.append(label)
@@ -449,18 +505,18 @@ class Exp_IR_Classification(Exp_Basic):
         preds = torch.cat(preds, 0)
         trues = torch.cat(trues, 0)
 
-        # self.handle.remove()  # remove the hook after use
-        # self.cross_attention_handle.remove()
-        # cross_attention_weights = torch.cat(cross_attention_weights, 0)
-        # print("attention shape: ", cross_attention_weights.shape)
-        # time_embeddings = torch.cat(time_embeddings, 0)
-        # time_channedl_1_embedding = time_embeddings[:, 0, :]
-        # time_channedl_2_embedding = time_embeddings[:, 1, :]
-        # text_embeddings = torch.cat(text_embeddings, 0)
-        # text_channel_1_embedding = text_embeddings[:, 0, :]
-        # text_channel_2_embedding = text_embeddings[:, 1, :]
-        # print("time embedding shape: ", time_channedl_1_embedding.shape)
-        # print("text embedding shape: ", text_channel_1_embedding.shape)
+        self.handle.remove()  # remove the hook after use
+        self.cross_attention_handle.remove()
+        cross_attention_weights = torch.cat(cross_attention_weights, 0)
+        print("attention shape: ", cross_attention_weights.shape)
+        time_embeddings = torch.cat(time_embeddings, 0)
+        time_channedl_1_embedding = time_embeddings[:, 0, :]
+        time_channedl_2_embedding = time_embeddings[:, 1, :]
+        text_embeddings = torch.cat(text_embeddings, 0)
+        text_channel_1_embedding = text_embeddings[:, 0, :]
+        text_channel_2_embedding = text_embeddings[:, 1, :]
+        print("time embedding shape: ", time_channedl_1_embedding.shape)
+        print("text embedding shape: ", text_channel_1_embedding.shape)
 
         # print('test shape:', preds.shape, trues.shape)
 

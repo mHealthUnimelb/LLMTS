@@ -17,7 +17,7 @@ conda activate calf
 export CUDA_LAUNCH_BLOCKING=1
 
 seq_len=2500
-model=CALF_12
+model=CALF_16
 pred_len=0
 
 python run.py \
@@ -27,11 +27,12 @@ python run.py \
     --task_name classification \
     --model_id P12_$model'_'$seq_len'_'$pred_len \
     --data P12 \
+    --data_split_path ./data/P12data/splits/phy12_split5.npy \
     --seq_len $seq_len \
     --label_len 0 \
     --pred_len $pred_len \
     --batch_size 64 \
-    --learning_rate 0.00000005 \
+    --learning_rate 0.00005 \
     --lradj type1 \
     --train_epochs 100 \
     --d_model 768 \
@@ -58,7 +59,6 @@ python run.py \
     --rec_hidden 128 \
     --quantization 0.016 \
     --classif \
-    --split_type random \
     --num_ca_heads 1 \
     --learn_emb \
     --patch_len 16 \

@@ -24,6 +24,8 @@ class cmLoss(nn.Module):
         self.task_w = task_w
         self.output_w = output_w
         self.feature_w = feature_w
+        self.encoder_only_w = 0.5
+        self.llm_w = 0.5
 
         self.feature_loss = loss_dict[feature_loss]
         self.output_loss = loss_dict[output_loss]
@@ -35,11 +37,12 @@ class cmLoss(nn.Module):
         self.task_name = task_name
 
     def forward(self, outputs, batch_y, in_sample=None, freq_map=None, batch_y_mark=None):
-        outputs_text, outputs_time, intermidiate_feat_time, intermidiate_feat_text = (
+        outputs_text, outputs_time, intermidiate_feat_time, intermidiate_feat_text, encoder_only_logits = (
             outputs["outputs_text"],
             outputs["outputs_time"],
             outputs["intermidiate_time"],
-            outputs["intermidiate_text"]
+            outputs["intermidiate_text"],
+            outputs["encoder_only"],
         )
 
         # feture regularization loss
@@ -78,7 +81,10 @@ class cmLoss(nn.Module):
         elif self.task_name == "anomaly_detection":
             task_loss = self.task_loss(outputs_time, batch_y)
 
-        total_loss = self.task_w * task_loss + self.output_w * output_loss + self.feature_w * feature_loss
+        encoder_only_loss = self.task_loss(encoder_only_logits, batch_y)
+
+        total_loss = self.encoder_only_w * encoder_only_loss + self.llm_w * (
+                    self.task_w * task_loss + self.output_w * output_loss + self.feature_w * feature_loss)
         print(f"feature loss: {feature_loss}, feature weight: {self.feature_w}")
         print(f"output loss: {output_loss}, output weight: {self.output_w}")
         print(f"task loss: {task_loss}, task weight: {self.task_w}")

@@ -919,9 +919,8 @@ class Dataset_PhysioNet(Dataset):
 
 
 class Dataset_P12(Dataset):
-    def __init__(self, args=None, root_path=None, dataset='P12', device=torch.device("cpu"), q=0, upsampling_batch=True,
-                 split_type='random'):
-        self.data_objects = get_data(args, dataset, device, q, upsampling_batch, args.split_type)
+    def __init__(self, args=None, root_path=None, dataset='P12', device=torch.device("cpu"), q=0, upsampling_batch=True):
+        self.data_objects = get_data(args, dataset, device, q, upsampling_batch)
         self.class_names = ["survival", "death"]
 
 

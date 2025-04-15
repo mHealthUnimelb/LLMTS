@@ -1,4 +1,7 @@
+# use Multi-Scale, share same encoder, merge before cross attention
+# use BiLSTM
 # first encode, then patching, add variable-wise attention
+# use linear mapping to reduce vocab_size
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -10,6 +13,7 @@ from transformers import GPT2Tokenizer
 import math
 import numpy as np
 import os
+
 
 class multiTimeAttention(nn.Module):
 
@@ -28,15 +32,16 @@ class multiTimeAttention(nn.Module):
 
     def attention(self, query, key, value, mask=None, dropout=None):
         "Compute 'Scaled Dot Product Attention'"
-        print(f"attention query shape: {query.shape}, key shape: {key.shape}, value shape: {value.shape}, mask shape: {mask.shape}")
+        print(
+            f"attention query shape: {query.shape}, key shape: {key.shape}, value shape: {value.shape}, mask shape: {mask.shape}")
         # attention query shape: torch.Size([1, 1, 128, 128]), key shape: torch.Size([128, 1, 190, 128]), value shape: torch.Size([128, 1, 190, 82]), mask shape: torch.Size([128, 1, 190, 82])
         dim = value.size(-1)
         d_k = query.size(-1)
         scores = torch.matmul(query, key.transpose(-2, -1)) \
                  / math.sqrt(d_k)
         scores = scores.unsqueeze(-1).repeat_interleave(dim, dim=-1)
-        print("scores shape: ", scores.shape) # (128, 1, 128, 190, 82)
-        print("mask shape: ", mask.shape) # (128, 1, 190, 82)
+        print("scores shape: ", scores.shape)  # (128, 1, 128, 190, 82)
+        print("mask shape: ", mask.shape)  # (128, 1, 190, 82)
         if mask is not None:
             scores = scores.masked_fill(mask.unsqueeze(-3) == 0, -1e9)
         p_attn = F.softmax(scores, dim=-2)
@@ -49,7 +54,7 @@ class multiTimeAttention(nn.Module):
         print(
             f"forward query shape: {query.shape}, key shape: {key.shape}, value shape: {value.shape}, mask shape: {mask.shape}")
         batch, seq_len, dim = value.size()
-        print(f"batch: {batch}, seq_len: {seq_len}, dim: {dim}") # 128, 190, 768
+        print(f"batch: {batch}, seq_len: {seq_len}, dim: {dim}")  # 128, 190, 768
         if mask is not None:
             # Same mask applied to all h heads.
             mask = mask.unsqueeze(1)
@@ -132,10 +137,25 @@ class multiTimeAttention(nn.Module):
 #         return out
 
 
+class AttentionPooling(nn.Module):
+    def __init__(self, hidden_dim):
+        super(AttentionPooling, self).__init__()
+        # Compute a scalar score for each patch.
+        self.attention_fc = nn.Linear(hidden_dim, 1)
+
+    def forward(self, x):
+        # x shape: (B, num_patches, hidden_dim)
+        scores = self.attention_fc(x)  # (B, num_patches, 1)
+        weights = F.softmax(scores, dim=1)  # Normalize over the patch dimension.
+        pooled = torch.sum(x * weights, dim=1)  # (B, hidden_dim)
+        return pooled
+
+
 class enc_mtan(nn.Module):
 
     def __init__(self, input_dim, query, nhidden=16,
-                 embed_time=16, num_heads=1, learn_emb=True, freq=10., patch_len=128, stride=64, device='cuda'):
+                 embed_time=16, num_heads=1, learn_emb=True, freq=10., patch_len1=8, stride1=8, patch_len2=16,
+                 stride2=8, patch_len3=24, stride3=7, patch_len4=32, stride4=6, device='cuda'):
         super(enc_mtan, self).__init__()
         assert embed_time % num_heads == 0
         self.freq = freq
@@ -143,9 +163,13 @@ class enc_mtan(nn.Module):
         self.learn_emb = learn_emb
         self.dim = input_dim
         self.device = device
-        self.patch_len = patch_len
-        self.num_patches = 0
-        self.stride = stride
+        self.scale_configs = [
+            (patch_len1, stride1),
+            (patch_len2, stride2),
+            (patch_len3, stride3),
+            (patch_len4, stride4),
+        ]
+        self.num_scales = len(self.scale_configs)
         self.nhidden = nhidden
         self.query = query
         print("query shape: ", query.shape)
@@ -164,10 +188,15 @@ class enc_mtan(nn.Module):
         # self.local_gru = nn.GRU(input_size=self.nhidden, hidden_size=self.nhidden, batch_first=True)
 
         # LSTM
-        self.local_lstm = nn.LSTM(input_size=self.nhidden, hidden_size=self.nhidden, batch_first=True)
+        self.local_lstm = nn.LSTM(input_size=self.nhidden, hidden_size=self.nhidden, batch_first=True,
+                                  bidirectional=True)
 
         # global attention
         self.global_att = nn.MultiheadAttention(embed_dim=self.nhidden, num_heads=4)
+
+        self.attn_pool = AttentionPooling(nhidden)
+        # After pooling, each branch yields a fixed vector (B, nhidden). Concatenate and fuse.
+        # self.merge_fc = nn.Linear(nhidden * self.num_scales, nhidden)
 
         # CNN
         # self.conv1d = nn.Conv1d(in_channels=self.nhidden, out_channels=self.nhidden, kernel_size=query.shape[-1])
@@ -185,7 +214,7 @@ class enc_mtan(nn.Module):
 
     def learn_time_embedding(self, tt):
         tt = tt.to(self.device)
-        print("tt shape: ", tt.shape) # (128, 2, 100)   (1, 256)
+        print("tt shape: ", tt.shape)  # (128, 2, 100)   (1, 256)
         tt = tt.unsqueeze(-1)
         out2 = torch.sin(self.periodic(tt))
         out1 = self.linear(tt)
@@ -222,110 +251,130 @@ class enc_mtan(nn.Module):
         # return self.classifier(out.squeeze(0))
 
         batch_size, seq_len, dim = out.shape
-        # compute the required padding
-        full_patches = math.ceil((seq_len - self.patch_len) / self.stride) + 1
-        total_length = (full_patches - 1) * self.stride + self.patch_len
-        padding_needed = total_length - seq_len
-        if padding_needed > 0:
-            # pad x and time_steps
-            pad_layer = nn.ReplicationPad1d((0, padding_needed))
-            out = pad_layer(out.permute(0, 2, 1).contiguous()).permute(0, 2, 1).contiguous()
+        scale_outputs = []
+        # loop over each scale configuration
+        for (patch_len, stride) in self.scale_configs:
+            # compute the required padding
+            full_patches = math.ceil((seq_len - patch_len) / stride) + 1
+            total_length = (full_patches - 1) * stride + patch_len
+            padding_needed = total_length - seq_len
+            current = out
+            if padding_needed > 0:
+                # pad x and time_steps
+                pad_layer = nn.ReplicationPad1d((0, padding_needed))
+                current = pad_layer(out.permute(0, 2, 1).contiguous()).permute(0, 2, 1).contiguous()
 
-        # patching out
-        out_patches = out.unfold(dimension=1, size=self.patch_len,
-                                 step=self.stride)  # Shape: [batch_size, num_patches, dim, patch_len]
-        out_patches = out_patches.permute(0, 1, 3, 2).contiguous()  # Shape: [batch_size, num_patches, patch_len, dim]
-        print("out_patches shape: ", out_patches.shape)
-        self.num_patches = out_patches.shape[1]
+            # patching out
+            out_patches = current.unfold(dimension=1, size=patch_len,
+                                         step=stride)  # Shape: [batch_size, num_patches, dim, patch_len]
+            out_patches = out_patches.permute(0, 1, 3,
+                                              2).contiguous()  # Shape: [batch_size, num_patches, patch_len, dim]
+            print("out_patches shape: ", out_patches.shape)
+            num_patches = out_patches.shape[1]
 
-        # # patch positional embeddings
-        # patch_positions = torch.arange(self.num_patches, device=self.device).unsqueeze(0).repeat(batch_size, 1)  # Shape: [batch_size, num_patches]
-        # patch_pos_emb = self.time_embedding(patch_positions, self.embed_time).to(
-        #     self.device)  # Shape: [batch_size, num_patches, embed_time]
-        #
-        # # reshape patch_pos_emb to align with key and query
-        # patch_pos_emb_key = patch_pos_emb.unsqueeze(2).expand(-1, -1, self.patch_len,
-        #                                                   -1)  # Shape: [batch_size, num_patches, patch_len, embed_time]
-        # patch_pos_emb_key = patch_pos_emb_key.reshape(batch_size * self.num_patches, self.patch_len, -1).contiguous() # [batch_size * num_patches, patch_len, embed_time]
-        # print("patch_pos_emb shape: ", patch_pos_emb.shape)  # (batch_size, num_patches, patch_len, embed_time)
-        # #
-        # # Add patch positional embeddings to key and query
-        # key += patch_pos_emb_key  # Broadcasting over batch_size, num_patches, patch_len, embed_time
-        # print("key shape after adding patch_pos_emb: ", key.shape)
-        # Expand query to match batch_num_patches and add patch positional embeddings
-        # query = query.unsqueeze(0).unsqueeze(0)  # Shape: [1, 1, num_query_points, embed_time]
-        # query = query.expand(batch_size * self.num_patches, -1,
-        #                      -1)  # Shape: [batch_size, num_patches, num_query_points, embed_time]
-        # print("query shape: ", query.shape)
-        # patch_pos_emb_query = patch_pos_emb.view(batch_size * self.num_patches, 1, self.embed_time) # [batch_size * num_patches, 1, embed_time]
-        # query = query.clone() + patch_pos_emb_query  # Using the fact that patch_pos_emb has shape [batch_size, num_patches, patch_len, embed_time]
-        # print("query shape after adding patch_pos_emb: ", query.shape)
+            # # patch positional embeddings
+            # patch_positions = torch.arange(self.num_patches, device=self.device).unsqueeze(0).repeat(batch_size, 1)  # Shape: [batch_size, num_patches]
+            # patch_pos_emb = self.time_embedding(patch_positions, self.embed_time).to(
+            #     self.device)  # Shape: [batch_size, num_patches, embed_time]
+            #
+            # # reshape patch_pos_emb to align with key and query
+            # patch_pos_emb_key = patch_pos_emb.unsqueeze(2).expand(-1, -1, self.patch_len,
+            #                                                   -1)  # Shape: [batch_size, num_patches, patch_len, embed_time]
+            # patch_pos_emb_key = patch_pos_emb_key.reshape(batch_size * self.num_patches, self.patch_len, -1).contiguous() # [batch_size * num_patches, patch_len, embed_time]
+            # print("patch_pos_emb shape: ", patch_pos_emb.shape)  # (batch_size, num_patches, patch_len, embed_time)
+            # #
+            # # Add patch positional embeddings to key and query
+            # key += patch_pos_emb_key  # Broadcasting over batch_size, num_patches, patch_len, embed_time
+            # print("key shape after adding patch_pos_emb: ", key.shape)
+            # Expand query to match batch_num_patches and add patch positional embeddings
+            # query = query.unsqueeze(0).unsqueeze(0)  # Shape: [1, 1, num_query_points, embed_time]
+            # query = query.expand(batch_size * self.num_patches, -1,
+            #                      -1)  # Shape: [batch_size, num_patches, num_query_points, embed_time]
+            # print("query shape: ", query.shape)
+            # patch_pos_emb_query = patch_pos_emb.view(batch_size * self.num_patches, 1, self.embed_time) # [batch_size * num_patches, 1, embed_time]
+            # query = query.clone() + patch_pos_emb_query  # Using the fact that patch_pos_emb has shape [batch_size, num_patches, patch_len, embed_time]
+            # print("query shape after adding patch_pos_emb: ", query.shape)
 
-        # Reshape back to (batch_size, total_seq_len, embedding_dim)
-        # out = out.view(batch_size, -1, self.nhidden)
-        # out = out.view(batch_size, self.num_patches, query.shape[-2], self.nhidden)
-        # out = out_patches.view(batch_size * self.num_patches, self.patch_len, self.nhidden)
-        # print("out shape: ", out.shape)
+            # Reshape back to (batch_size, total_seq_len, embedding_dim)
+            # out = out.view(batch_size, -1, self.nhidden)
+            # out = out.view(batch_size, self.num_patches, query.shape[-2], self.nhidden)
+            # out = out_patches.view(batch_size * self.num_patches, self.patch_len, self.nhidden)
+            # print("out shape: ", out.shape)
 
-        # adaptive pool
-        # out = out.view(batch_size, self.num_patches * query.shape[-2], self.nhidden)
-        # if (self.num_patches * query.shape[-2]) > 1024:
-        #     out = out.permute(0, 2, 1)
-        #     out = self.adaptive_pool(out)
-        #     out = out.permute(0, 2, 1)
-        # print("out shape: ", out.shape)
+            # adaptive pool
+            # out = out.view(batch_size, self.num_patches * query.shape[-2], self.nhidden)
+            # if (self.num_patches * query.shape[-2]) > 1024:
+            #     out = out.permute(0, 2, 1)
+            #     out = self.adaptive_pool(out)
+            #     out = out.permute(0, 2, 1)
+            # print("out shape: ", out.shape)
 
-        # # attention layer
-        # out = out.view(batch_size, self.num_patches, query.shape[-2], self.nhidden)
-        # attention_weights = self.attention_pooling(out)
-        # out = (out * attention_weights).sum(dim=2)
-        # print("out shape: ", out.shape)
+            # # attention layer
+            # out = out.view(batch_size, self.num_patches, query.shape[-2], self.nhidden)
+            # attention_weights = self.attention_pooling(out)
+            # out = (out * attention_weights).sum(dim=2)
+            # print("out shape: ", out.shape)
 
-        # gru
-        # out = out.view(batch_size * self.num_patches, query.shape[-2], self.nhidden)
-        # _, out = self.local_gru(out)
-        # out = out.squeeze(0).view(batch_size, self.num_patches, self.nhidden)
-        # print("out shape: ", out.shape)
-        # out = out.view(batch_size * self.num_patches, query.shape[-2], self.nhidden)
+            # gru
+            # out = out.view(batch_size * self.num_patches, query.shape[-2], self.nhidden)
+            # _, out = self.local_gru(out)
+            # out = out.squeeze(0).view(batch_size, self.num_patches, self.nhidden)
+            # print("out shape: ", out.shape)
+            # out = out.view(batch_size * self.num_patches, query.shape[-2], self.nhidden)
 
-        # lstm
-        out = out_patches.view(batch_size * self.num_patches, self.patch_len, self.nhidden)
-        _, (out, _) = self.local_lstm(out)
-        out = out.squeeze(0).view(batch_size, self.num_patches, self.nhidden)
-        print("out shape: ", out.shape)
+            # lstm
+            lstm_input = out_patches.view(batch_size * num_patches, patch_len, self.nhidden)
+            _, (h_n, _) = self.local_lstm(lstm_input)
+            lstm_out = h_n.mean(dim=0)
+            branch_out = lstm_out.view(batch_size, num_patches, self.nhidden)
+            print("branch_out shape: ", branch_out.shape)
 
-        # Add patch positional embeddings to key and query
-        # patch positional embeddings
-        patch_positions = torch.arange(self.num_patches, device=self.device).unsqueeze(0).repeat(batch_size, 1)  # Shape: [batch_size, num_patches]
-        patch_pos_emb = self.time_embedding(patch_positions, out.shape[2]).to(
-            self.device)  # Shape: [batch_size, num_patches, embed_time]
-        out += patch_pos_emb
-        print("out shape after adding patch_pos_emb: ", out.shape)
+            # Add patch positional embeddings to key and query
+            # patch positional embeddings
+            patch_positions = torch.arange(num_patches, device=self.device).unsqueeze(0).repeat(batch_size,
+                                                                                                1)  # Shape: [batch_size, num_patches]
+            patch_pos_emb = self.time_embedding(patch_positions, branch_out.shape[2]).to(
+                self.device)  # Shape: [batch_size, num_patches, embed_time]
+            branch_out += patch_pos_emb
+            print("branch_out shape after adding patch_pos_emb: ", branch_out.shape)
 
-        # global attention
-        out = out.transpose(0, 1)  # Shape: (num_patches, batch_size, nhidden)
-        global_out, _ = self.global_att(out, out, out)
-        out = global_out.transpose(0, 1)  # Shape: (batch_size, num_patches, nhidden)
+            # global attention
+            branch_out = branch_out.transpose(0, 1)  # Shape: (num_patches, batch_size, nhidden)
+            global_out, _ = self.global_att(branch_out, branch_out, branch_out)
+            branch_out = global_out.transpose(0, 1)  # Shape: (batch_size, num_patches, nhidden)
+            print(f"Scale (patch_len={patch_len}, stride={stride}) output shape: ", branch_out.shape)
+            # Use the attention pooling module to reduce the patch sequence to a fixed vector.
+            pooled_feature = self.attn_pool(branch_out)  # (B, nhidden)
+            scale_outputs.append(pooled_feature)
+            print("pooled_feature shape:", pooled_feature.shape)
 
-        # CNN
-        # out = out.view(batch_size * self.num_patches, self.nhidden, query.shape[-2])
-        # out = self.conv1d(out)
-        # print("out shape: ", out.shape) # (704, 768, 241)
-        # out = out.squeeze(-1)
-        # print("out shape: ", out.shape)
-        # out = out.view(batch_size, self.num_patches, self.nhidden)
-        # print("out shape: ", out.shape)
+            # CNN
+            # out = out.view(batch_size * self.num_patches, self.nhidden, query.shape[-2])
+            # out = self.conv1d(out)
+            # print("out shape: ", out.shape) # (704, 768, 241)
+            # out = out.squeeze(-1)
+            # print("out shape: ", out.shape)
+            # out = out.view(batch_size, self.num_patches, self.nhidden)
+            # print("out shape: ", out.shape)
 
-        # out = out.reshape(batch_size, out.shape[1] * self.num_patches, self.nhidden)
-        # print("out reshape: ", out.shape)
-        # out = out.permute(1, 0, 2)
-        # _, out = self.enc(out)
-        # return self.classifier(out.squeeze(0))
-        return out
+            # out = out.reshape(batch_size, out.shape[1] * self.num_patches, self.nhidden)
+            # print("out reshape: ", out.shape)
+            # out = out.permute(1, 0, 2)
+            # _, out = self.enc(out)
+            # return self.classifier(out.squeeze(0))
+
+        # Concatenate features from each scale and merge.
+        fused = torch.stack(scale_outputs, dim=1)  # (B, num_scales, hidden)
+        # fused = self.merge_fc(fused)  # (B, nhidden)
+        print("Final multi-scale fused feature shape:", fused.shape)
+
+        return fused
+
 
 class Encoder_PCA(nn.Module):
     def __init__(self, input_dim, word_embedding, hidden_dim=768, num_heads=1, num_encoder_layers=1, device='cpu',
-                 num_ref_points=128, latent_dim=32, learn_emb=True, patch_len=16, stride=8, num_ca_heads=1, prompt_embeddings=None):
+                 num_ref_points=128, latent_dim=32, learn_emb=True, patch_len=16, stride=8, num_ca_heads=1,
+                 prompt_embeddings=None):
         super(Encoder_PCA, self).__init__()
         # self.linear = nn.Linear(input_dim, hidden_dim)
 
@@ -340,29 +389,37 @@ class Encoder_PCA(nn.Module):
         #                             nhidden=hidden_dim,
         #                             embed_time=128, learn_emb=learn_emb, num_heads=num_heads).to(device)
         self.encoder = enc_mtan(input_dim, torch.linspace(0, 1., num_ref_points), nhidden=hidden_dim,
-                                embed_time=128, num_heads=num_heads, learn_emb=learn_emb, patch_len=patch_len,
-                                stride=stride).to(device)
+                                embed_time=128, num_heads=num_heads, learn_emb=learn_emb).to(device)
 
         self.cross_attention = nn.MultiheadAttention(embed_dim=hidden_dim, num_heads=num_ca_heads)
 
-        self.word_embedding = word_embedding.T
+        # self.word_embedding = word_embedding.T
+        self.word_embedding = word_embedding
+        self.vocab_size = word_embedding.shape[0]
+        print("vocab size:", self.vocab_size)
+        self.num_tokens = 1000
+        self.mapping_layer = nn.Linear(self.vocab_size, self.num_tokens)
+        self.prompt_embeddings = prompt_embeddings
 
-        # add prompt for word token
-        self.word_embedding = torch.cat([prompt_embeddings.squeeze(0), self.word_embedding], dim=0)
-        print("word embedding shape: ", self.word_embedding.shape)
-
-        self.num_patches = math.ceil((num_ref_points - patch_len) / stride) + 1
+        # self.num_patches = math.ceil((num_ref_points - patch_len) / stride) + 1
+        self.num_scales = 4
 
     def forward(self, x, time_steps):
         B = x.shape[0]
-        if self.word_embedding.ndim == 2:
-            self.word_embedding = self.word_embedding.repeat(B, 1, 1)
-        elif self.word_embedding.shape[0] != B:
-            self.word_embedding = self.word_embedding[0].repeat(B, 1, 1)
-        print("word embedding shape: ", self.word_embedding.shape)
+
+        word_embedding = self.mapping_layer(self.word_embedding.permute(1, 0)).permute(1, 0)
+        # add prompt for word token
+        word_embedding = torch.cat([self.prompt_embeddings.squeeze(0), word_embedding], dim=0)
+        print("word embedding shape: ", word_embedding.shape)
+
+        if word_embedding.ndim == 2:
+            word_embedding = word_embedding.repeat(B, 1, 1)
+        elif word_embedding.shape[0] != B:
+            word_embedding = word_embedding[0].repeat(B, 1, 1)
+        print("word embedding shape: ", word_embedding.shape)
 
         x = rearrange(x, 'b m l -> b l m')
-        print("x shape: ", x.shape) # (128, 82, 190)  (128, 190, 82)
+        print("x shape: ", x.shape)  # (128, 82, 190)  (128, 190, 82)
         # x = self.linear(x)
 
         # x = self.transformer_encoder(x.transpose(0, 1)).transpose(0, 1)
@@ -373,7 +430,7 @@ class Encoder_PCA(nn.Module):
         x_time = x
 
         q = x.transpose(0, 1)
-        k = v = self.word_embedding.transpose(0, 1)
+        k = v = word_embedding.transpose(0, 1)
         x, w_ = self.cross_attention(q, k, v)
         print("weights shape: ", w_.shape)
 
@@ -425,6 +482,8 @@ class Model(nn.Module):
                                                            output_hidden_states=True)  # loads a pretrained GPT-2 base model
         self.tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
 
+        self.word_embeddings = self.gpt2_text.wte.state_dict()['weight'].to(device)
+
         self.gpt2.h = self.gpt2.h[:configs.gpt_layers]
         self.gpt2_text.h = self.gpt2_text.h[:configs.gpt_layers]
         self.gpt2 = get_peft_model(self.gpt2, peft_config)
@@ -471,8 +530,8 @@ class Model(nn.Module):
         # self.llama = get_peft_model(self.llama, peft_config)
         # self.llama_text = get_peft_model(self.llama_text, peft_config)
 
-        word_embedding = torch.tensor(torch.load(configs.word_embedding_path)).to(device=device)
-        print("word_embedding_path: ", configs.word_embedding_path)
+        # word_embedding = torch.tensor(torch.load(configs.word_embedding_path)).to(device=device)
+        # print("word_embedding_path: ", configs.word_embedding_path)
 
         for i, (name, param) in enumerate(self.gpt2.named_parameters()):
             if 'ln' in name or 'wpe' in name or 'lora' in name:
@@ -509,7 +568,6 @@ class Model(nn.Module):
         self.prompt_embeddings = self.gpt2_text.wte(input_ids).to(device)
         print("prompt_embeddings shape:", self.prompt_embeddings.shape)
 
-
         self.time_proj = nn.ModuleList(
             [nn.Linear(configs.d_model, configs.d_model, bias=False) for _ in range(configs.gpt_layers + 1)])
 
@@ -524,8 +582,8 @@ class Model(nn.Module):
         #     [nn.Linear(configs.d_model, configs.d_model, bias=False) for _ in
         #      range(self.llama_config.num_hidden_layers + 1)])
 
-        print("config.dim: ", configs.dim) # 41
-        self.in_layer = Encoder_PCA(configs.dim, word_embedding, hidden_dim=configs.d_model,
+        print("config.dim: ", configs.dim)  # 41
+        self.in_layer = Encoder_PCA(configs.dim, self.word_embeddings, hidden_dim=configs.d_model,
                                     num_heads=configs.num_ca_heads, device=device,
                                     num_ref_points=configs.num_ref_points, latent_dim=configs.latent_dim,
                                     learn_emb=configs.learn_emb, patch_len=configs.patch_len, stride=configs.stride,
@@ -539,11 +597,12 @@ class Model(nn.Module):
         elif self.task_name == 'classification':
             # print("configs.d_model * configs.enc_in: ", configs.d_model * configs.enc_in)
             # self.out_layer = nn.Linear(configs.d_model * configs.enc_in, configs.num_class)
-            self.num_patches = math.ceil((configs.num_ref_points - configs.patch_len) / configs.stride) + 1
-            self.out_layer = nn.Linear(configs.d_model * self.num_patches, configs.num_class)
+            # self.num_patches = math.ceil((configs.num_ref_points - configs.patch_len) / configs.stride) + 1
+            self.num_scales = 4
+            self.out_layer = nn.Linear(configs.d_model * self.num_scales, configs.num_class)
             # print("configs.d_model * configs.enc_in: ", configs.d_model * configs.enc_in) # 768 * 7 = 5376
             # encoder-only classification head
-            self.encoder_only_head = nn.Linear(configs.d_model * self.num_patches, configs.num_class)
+            self.encoder_only_head = nn.Linear(configs.d_model * self.num_scales, configs.num_class)
             # self.alpha = 1.0 # weight for LLM classification loss
         elif self.task_name == 'imputation':
             self.out_layer = nn.Linear(configs.d_model, configs.seq_len)
@@ -609,8 +668,8 @@ class Model(nn.Module):
         x = rearrange(x, 'b l m -> b m l')
 
         outputs_time1, outputs_text1 = self.in_layer(x, time_steps)
-        print("outputs_time1 shape: ", outputs_time1.shape) # (128, 128, 768)
-        print("outputs_text1 shape: ", outputs_text1.shape) # (128, 128, 768)
+        print("outputs_time1 shape: ", outputs_time1.shape)  # (128, 128, 768)
+        print("outputs_text1 shape: ", outputs_text1.shape)  # (128, 128, 768)
 
         # encoder-only classifier head
         encoder_output = outputs_time1.reshape(B, -1)
@@ -631,8 +690,8 @@ class Model(nn.Module):
         # llama_output_text = self.llama_text(inputs_embeds=outputs_text1, output_hidden_states=True)
         # outputs_text = llama_output_text.last_hidden_state
 
-        print("outputs_time shape: ", outputs_time.shape) # (128, 128, 768)
-        print("outputs_text shape: ", outputs_text.shape) # (128, 128, 768)
+        print("outputs_time shape: ", outputs_time.shape)  # (128, 128, 768)
+        print("outputs_text shape: ", outputs_text.shape)  # (128, 128, 768)
 
         outputs_time += outputs_time1
         outputs_text += outputs_text1
@@ -649,13 +708,13 @@ class Model(nn.Module):
         #     self.text_proj[idx](feat) for idx, feat in enumerate(llama_output_text.hidden_states)
         # )
 
-        print("outputs_time shape: ", outputs_time.shape) # (128, 128, 768)
-        print("outputs_text shape: ", outputs_text.shape) # (128, 128, 768)
+        print("outputs_time shape: ", outputs_time.shape)  # (128, 128, 768)
+        print("outputs_text shape: ", outputs_text.shape)  # (128, 128, 768)
         outputs_time = outputs_time.reshape(B, -1)
         outputs_text = outputs_text.reshape(B, -1)
 
-        print("outputs_time shape: ", outputs_time.shape) # 128, 98304
-        print("outputs_text shape: ", outputs_text.shape) # 128, 98304
+        print("outputs_time shape: ", outputs_time.shape)  # 128, 98304
+        print("outputs_text shape: ", outputs_text.shape)  # 128, 98304
         outputs_time = self.out_layer(outputs_time)
         outputs_text = self.out_layer(outputs_text)
 

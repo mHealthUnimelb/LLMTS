@@ -464,21 +464,32 @@ def balanced_batch_sampler(train_data, true_labels, batch_size, n_classes):
 
     for _ in range(num_iter_batch):
         batch_indices = []
-        # For each class, sample per_class_per_batch indices
         for cls in range(n_classes):
-            # If there aren't enough available samples for this class, refill the pool
-            if len(available_indices[cls]) < per_class_per_batch:
-                available_indices[cls] = class_indices[cls].copy()
-                np.random.shuffle(available_indices[cls])
-            # Randomly select indices from the available pool without replacement
-            sampled = random.sample(available_indices[cls], per_class_per_batch)
-            # Remove the selected indices from the available pool
-            for idx in sampled:
-                available_indices[cls].remove(idx)
+            sampled = []
+            # Use leftover samples first if available.
+            num_available = len(available_indices[cls])
+            if num_available >= per_class_per_batch:
+                # Enough available samples: take the first 'per_class_per_batch' samples.
+                sampled = available_indices[cls][:per_class_per_batch]
+                available_indices[cls] = available_indices[cls][per_class_per_batch:]
+            else:
+                # Not enough samples remaining: use all the available samples.
+                if num_available > 0:
+                    sampled = available_indices[cls].copy()
+                    available_indices[cls] = []
+                # Calculate how many additional samples are needed.
+                needed = per_class_per_batch - len(sampled)
+                # Refill the pool by shuffling a complete copy of the class indices.
+                new_pool = class_indices[cls].copy()
+                np.random.shuffle(new_pool)
+                additional_samples = new_pool[:needed]
+                sampled.extend(additional_samples)
+                # Store the remaining samples in the new pool for future use.
+                available_indices[cls] = new_pool[needed:]
             batch_indices.extend(sampled)
 
         # Optionally shuffle the combined batch indices for randomness within the batch
-        np.random.shuffle(batch_indices)
+        # np.random.shuffle(batch_indices)
         # Append the samples corresponding to these indices to the upsampled training data
         for idx in batch_indices:
             upsampled_train_data.append(train_data[idx])
@@ -488,16 +499,15 @@ def balanced_batch_sampler(train_data, true_labels, batch_size, n_classes):
     return upsampled_train_data
 
 
-def get_data(args, dataset, device, q, upsampling_batch, split_type, flag=1):
+def get_data(args, dataset, device, q, upsampling_batch, flag=1):
     print("upsampling_batch", upsampling_batch)
-    print("split_type", split_type)
     if dataset == 'P12':
         total_dataset = PhysioNet('data/physionet',
                                   quantization=q,
                                   download=True,
                                   device=device)
         PT_dict = np.load('./data/P12data/processed_data/PTdict_list.npy', allow_pickle=True)
-        idx_train, idx_val, idx_test = np.load('./data/P12data/splits/phy12_split5.npy', allow_pickle=True)
+        idx_train, idx_val, idx_test = np.load(args.data_split_path, allow_pickle=True)
     elif dataset == 'P19':
         PT_dict = np.load('../P19data/processed_data/PT_dict_list_6.npy', allow_pickle=True)
         labels_ts = np.load('../P19data/processed_data/labels_ts.npy', allow_pickle=True)
@@ -536,14 +546,22 @@ def get_data(args, dataset, device, q, upsampling_batch, split_type, flag=1):
         train_record_ids = [PT_dict[i]['id'] for i in idx_train]
         val_record_ids = [PT_dict[i]['id'] for i in idx_val]
         test_record_ids = [PT_dict[i]['id'] for i in idx_test]
+
+        #  dictionary mapping record_id to its tuple
+        record_dict = {rec[0]: rec for rec in total_dataset}
+
         # get data
-        for record in total_dataset:
-            if record[0] in train_record_ids:
-                train_data.append(record)
-            elif record[0] in val_record_ids:
-                val_data.append(record)
-            elif record[0] in test_record_ids:
-                test_data.append(record)
+        # for record in total_dataset:
+        #     if record[0] in train_record_ids:
+        #         train_data.append(record)
+        #     elif record[0] in val_record_ids:
+        #         val_data.append(record)
+        #     elif record[0] in test_record_ids:
+        #         test_data.append(record)
+        train_data = [record_dict[rid] for rid in train_record_ids]
+        val_data = [record_dict[rid] for rid in val_record_ids]
+        test_data = [record_dict[rid] for rid in test_record_ids]
+
         print("train_data[0]:", train_data[0])
         print("val_data[0]:", val_data[0])
         print("test_data[0]:", test_data[0])

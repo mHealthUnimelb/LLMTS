@@ -1,4 +1,6 @@
 # first encode, then patching, add variable-wise attention
+# use linear mapping to reduce vocab_size
+# use BiLSTM
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -164,7 +166,8 @@ class enc_mtan(nn.Module):
         # self.local_gru = nn.GRU(input_size=self.nhidden, hidden_size=self.nhidden, batch_first=True)
 
         # LSTM
-        self.local_lstm = nn.LSTM(input_size=self.nhidden, hidden_size=self.nhidden, batch_first=True)
+        self.local_lstm = nn.LSTM(input_size=self.nhidden, hidden_size=self.nhidden, batch_first=True,
+                                  bidirectional=True)
 
         # global attention
         self.global_att = nn.MultiheadAttention(embed_dim=self.nhidden, num_heads=4)
@@ -291,7 +294,8 @@ class enc_mtan(nn.Module):
         # lstm
         out = out_patches.view(batch_size * self.num_patches, self.patch_len, self.nhidden)
         _, (out, _) = self.local_lstm(out)
-        out = out.squeeze(0).view(batch_size, self.num_patches, self.nhidden)
+        out = out.mean(dim=0)
+        out = out.view(batch_size, self.num_patches, self.nhidden)
         print("out shape: ", out.shape)
 
         # Add patch positional embeddings to key and query
@@ -345,21 +349,29 @@ class Encoder_PCA(nn.Module):
 
         self.cross_attention = nn.MultiheadAttention(embed_dim=hidden_dim, num_heads=num_ca_heads)
 
-        self.word_embedding = word_embedding.T
-
-        # add prompt for word token
-        self.word_embedding = torch.cat([prompt_embeddings.squeeze(0), self.word_embedding], dim=0)
-        print("word embedding shape: ", self.word_embedding.shape)
+        # self.word_embedding = word_embedding.T
+        self.word_embedding = word_embedding
+        self.vocab_size = word_embedding.shape[0]
+        print("vocab size:", self.vocab_size)
+        self.num_tokens = 1000
+        self.mapping_layer = nn.Linear(self.vocab_size, self.num_tokens)
+        self.prompt_embeddings = prompt_embeddings
 
         self.num_patches = math.ceil((num_ref_points - patch_len) / stride) + 1
 
     def forward(self, x, time_steps):
         B = x.shape[0]
-        if self.word_embedding.ndim == 2:
-            self.word_embedding = self.word_embedding.repeat(B, 1, 1)
-        elif self.word_embedding.shape[0] != B:
-            self.word_embedding = self.word_embedding[0].repeat(B, 1, 1)
-        print("word embedding shape: ", self.word_embedding.shape)
+
+        word_embedding = self.mapping_layer(self.word_embedding.permute(1, 0)).permute(1, 0)
+        # add prompt for word token
+        word_embedding = torch.cat([self.prompt_embeddings.squeeze(0), word_embedding], dim=0)
+        print("word embedding shape: ", word_embedding.shape)
+
+        if word_embedding.ndim == 2:
+            word_embedding = word_embedding.repeat(B, 1, 1)
+        elif word_embedding.shape[0] != B:
+            word_embedding = word_embedding[0].repeat(B, 1, 1)
+        print("word embedding shape: ", word_embedding.shape)
 
         x = rearrange(x, 'b m l -> b l m')
         print("x shape: ", x.shape) # (128, 82, 190)  (128, 190, 82)
@@ -373,7 +385,7 @@ class Encoder_PCA(nn.Module):
         x_time = x
 
         q = x.transpose(0, 1)
-        k = v = self.word_embedding.transpose(0, 1)
+        k = v = word_embedding.transpose(0, 1)
         x, w_ = self.cross_attention(q, k, v)
         print("weights shape: ", w_.shape)
 
@@ -425,6 +437,8 @@ class Model(nn.Module):
                                                            output_hidden_states=True)  # loads a pretrained GPT-2 base model
         self.tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
 
+        self.word_embeddings = self.gpt2_text.wte.state_dict()['weight'].to(device)
+
         self.gpt2.h = self.gpt2.h[:configs.gpt_layers]
         self.gpt2_text.h = self.gpt2_text.h[:configs.gpt_layers]
         self.gpt2 = get_peft_model(self.gpt2, peft_config)
@@ -471,8 +485,8 @@ class Model(nn.Module):
         # self.llama = get_peft_model(self.llama, peft_config)
         # self.llama_text = get_peft_model(self.llama_text, peft_config)
 
-        word_embedding = torch.tensor(torch.load(configs.word_embedding_path)).to(device=device)
-        print("word_embedding_path: ", configs.word_embedding_path)
+        # word_embedding = torch.tensor(torch.load(configs.word_embedding_path)).to(device=device)
+        # print("word_embedding_path: ", configs.word_embedding_path)
 
         for i, (name, param) in enumerate(self.gpt2.named_parameters()):
             if 'ln' in name or 'wpe' in name or 'lora' in name:
@@ -525,7 +539,7 @@ class Model(nn.Module):
         #      range(self.llama_config.num_hidden_layers + 1)])
 
         print("config.dim: ", configs.dim) # 41
-        self.in_layer = Encoder_PCA(configs.dim, word_embedding, hidden_dim=configs.d_model,
+        self.in_layer = Encoder_PCA(configs.dim, self.word_embeddings, hidden_dim=configs.d_model,
                                     num_heads=configs.num_ca_heads, device=device,
                                     num_ref_points=configs.num_ref_points, latent_dim=configs.latent_dim,
                                     learn_emb=configs.learn_emb, patch_len=configs.patch_len, stride=configs.stride,
