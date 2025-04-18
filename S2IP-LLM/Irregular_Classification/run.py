@@ -25,6 +25,7 @@ parser.add_argument('--model', type=str, required=True, default='Autoformer',
 
 # data loader
 parser.add_argument('--data', type=str, required=True, default='ETTh1', help='dataset type')
+parser.add_argument('--data_split_path', type=str)
 parser.add_argument('--number_variable', type=int,default=7, help='number of variable')
 
 parser.add_argument('--root_path', type=str, default='./data/raw_data/ETTh1/', help='root path of the data file')
@@ -35,9 +36,6 @@ parser.add_argument('--target', type=str, default='OT', help='target feature in 
 parser.add_argument('--freq', type=str, default='h',
                     help='freq for time features encoding, options:[s:secondly, t:minutely, h:hourly, d:daily, b:business days, w:weekly, m:monthly], you can also use more detailed freq like 15min or 3h')
 parser.add_argument('--checkpoints', type=str, default='./checkpoints/', help='location of model checkpoints')
-parser.add_argument('--n', type=int, default=8000)
-parser.add_argument('--quantization', type=float, default=0.1,
-                    help="Quantization on the physionet dataset.")
 parser.add_argument('--classif', action='store_true',
                     help="Include binary classification loss")
 parser.add_argument('--classify-pertp', action='store_true')

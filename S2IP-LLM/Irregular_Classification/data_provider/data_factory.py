@@ -1,4 +1,6 @@
-from data_provider.data_loader import Dataset_ETT_hour, Dataset_ETT_hour_decomposed, Dataset_ETT_minute, Dataset_ETT_minute_decomposed, Dataset_Custom, Dataset_Physionet
+from data_provider.data_loader import Dataset_ETT_hour, Dataset_ETT_hour_decomposed, Dataset_ETT_minute, \
+    Dataset_ETT_minute_decomposed, Dataset_Custom, Dataset_P12
+import torch
 from torch.utils.data import DataLoader
 
 data_dict = {
@@ -13,7 +15,7 @@ data_dict = {
     'ECL': Dataset_Custom,
     'traffic': Dataset_Custom,
     'weather': Dataset_Custom,
-    'PhysioNet': Dataset_Physionet,
+    'P12': Dataset_P12,
 }
 
 
@@ -28,12 +30,12 @@ def data_provider(args, flag):
         if args.task_name == 'anomaly_detection' or args.task_name == 'classification':
             batch_size = args.batch_size
         else:
-            batch_size = 1  
+            batch_size = 1
         freq = args.freq
     else:
         shuffle_flag = True
         drop_last = True
-        batch_size = args.batch_size  
+        batch_size = args.batch_size
         freq = args.freq
 
     if args.task_name == 'anomaly_detection':
@@ -68,23 +70,9 @@ def data_provider(args, flag):
         )
         return data_set, data_loader
     elif args.task_name == 'ir_classification':
-        if args.data == 'PhysioNet':
-            data_set = Data(
-                root_path=args.root_path,
-                data_path=args.data_path,
-                args=args,
-                device='cpu',
-                flag=flag,
-                q=args.quantization,
-                training_flag=args.is_training
-            )
-            if flag == 'train':
-                data_loader = data_set.data_objects["train_dataloader"]
-            elif flag == 'val':
-                data_loader = data_set.data_objects["val_dataloader"]
-            elif flag == 'test':
-                data_loader = data_set.data_objects["test_dataloader"]
-            return data_set, data_loader
+        if args.data == 'P12' or args.data == 'P19' or args.data == 'PAM':
+            data_set = Data(args=args, dataset=args.data, device=torch.device("cpu"), upsampling_batch=True)
+            return data_set, None
     else:
         if args.data == 'm4':
             drop_last = False

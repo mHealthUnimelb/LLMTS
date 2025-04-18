@@ -17,6 +17,7 @@ import time
 import warnings
 import numpy as np
 from sklearn.metrics import average_precision_score, auc, roc_auc_score
+from sklearn.utils.class_weight import compute_class_weight
 
 from tqdm import tqdm
 
@@ -34,13 +35,23 @@ class Exp_ir_Classification(object):
         self.device = torch.device('cuda:0')
         self.model = self._build_model()
 
-        self.train_data, self.train_loader = self._get_data(flag='train')
-        self.vali_data, self.vali_loader = self._get_data(flag='val')
-        self.test_data, self.test_loader = self._get_data(flag='test')
-        self.dim = self.train_data.data_objects["input_dim"]
+        self.all_data, _ = data_provider(args, None)
+        self.train_data = self.all_data.data_objects["train_data"]
+        self.val_data = self.all_data.data_objects["val_data"]
+        self.test_data = self.all_data.data_objects["test_data"]
+        self.train_loader = self.all_data.data_objects["train_dataloader"]
+        self.vali_loader = self.all_data.data_objects["val_dataloader"]
+        self.test_loader = self.all_data.data_objects["test_dataloader"]
+        self.dim = self.all_data.data_objects["input_dim"]
+        # self.train_data, self.train_loader = self._get_data(flag='train')
+        # self.vali_data, self.vali_loader = self._get_data(flag='val')
+        # self.test_data, self.test_loader = self._get_data(flag='test')
+        # self.dim = self.train_data.data_objects["input_dim"]
 
         self.optimizer = self._select_optimizer()
-        self.criterion = self._select_criterion()
+        self.train_criterion = self._select_criterion(flag='train')
+        self.vali_criterion = self._select_criterion(flag='vali')
+        self.test_criterion = self._select_criterion(flag='test')
 
         self.train_accuracies = []
         self.vali_accuracies = []
@@ -57,20 +68,46 @@ class Exp_ir_Classification(object):
         return model
 
     def _get_data(self, flag):
-        data_set, data_loader = data_provider(self.args, flag)
-        return data_set, data_loader
+        data_set, _ = data_provider(self.args, flag)
+        return data_set, None
 
     def _select_optimizer(self):
         model_optim = optim.Adam(self.model.parameters(), lr=self.args.learning_rate)
         return model_optim
 
-    def _select_criterion(self):
+    def _calculate_class_weights(self, y_true):
+        # print(f"y_true label: {np.unique(y_true)}, type: {type(y_true)}")
+        # print(f"num_classes label: {np.arange(num_classes)}, type: {type(np.arange(num_classes))}")
+        # y_true_copy = copy.deepcopy(y_true)
+        # y_true_copy = np.array(y_true_copy)
+        y_true_copy = np.array(y_true)
+        print(f"y_true_copy label: {np.unique(y_true_copy)}, type: {type(y_true_copy)}")
+        class_weights = compute_class_weight(class_weight='balanced', classes=np.unique(y_true_copy), y=y_true_copy)
+        return torch.tensor(class_weights, dtype=torch.float).to(self.device)
+
+    def _select_criterion(self, flag):
         if self.args.loss == 'MSE':
             criterion = nn.MSELoss()
         elif self.args.loss == 'SMAPE':
             criterion = smape_loss()
         elif self.args.loss == 'CE':
-            criterion = nn.CrossEntropyLoss()
+            if flag == 'train':
+                y_train = [label for (_, _, _, _, label) in self.train_data]
+                class_weights = self._calculate_class_weights(y_train)
+                print("class_weights", class_weights)
+                criterion = nn.CrossEntropyLoss(weight=class_weights)
+            elif flag == 'vali':
+                y_val = [label for (_, _, _, _, label) in self.val_data]
+                class_weights = self._calculate_class_weights(y_val)
+                print("class_weights", class_weights)
+                criterion = nn.CrossEntropyLoss(weight=class_weights)
+            elif flag == 'test':
+                y_test = [label for (_, _, _, _, label) in self.test_data]
+                class_weights = self._calculate_class_weights(y_test)
+                print("class_weights", class_weights)
+                criterion = nn.CrossEntropyLoss(weight=class_weights)
+            else:
+                criterion = nn.CrossEntropyLoss()
 
         return criterion
 
@@ -112,7 +149,7 @@ class Exp_ir_Classification(object):
                             outputs = self.model(batch_x)
 
                         f_dim = -1 if self.args.features == 'MS' else 0
-                        loss = self.criterion(outputs, batch_y)
+                        loss = self.train_criterion(outputs, batch_y)
 
                 else:
                     if self.args.output_attention:
@@ -122,7 +159,7 @@ class Exp_ir_Classification(object):
 
                     f_dim = -1 if self.args.features == 'MS' else 0
 
-                    loss = self.criterion(outputs, batch_y)
+                    loss = self.train_criterion(outputs, batch_y)
 
                 train_loss.append(loss.item())
                 simlarity_losses.append(res['simlarity_loss'].item())
@@ -172,13 +209,13 @@ class Exp_ir_Classification(object):
             self.train_auprcs.append(train_auprc)
             self.train_accuracies.append(train_accuracy)
 
-            vali_loss, vali_accuracy, vali_auprc, vali_auc = self.vali(self.vali_data, self.vali_loader,
-                                                                       self.criterion)
+            vali_loss, vali_accuracy, vali_auprc, vali_auc = self.vali(self.vali_loader,
+                                                                       self.vali_criterion)
             self.vali_losses.append(vali_loss)
             self.vali_accuracies.append(vali_accuracy)
             self.vali_auprcs.append(vali_auprc)
-            test_loss, test_accuracy, test_auprc, test_auc = self.vali(self.test_data, self.test_loader,
-                                                                       self.criterion)
+            test_loss, test_accuracy, test_auprc, test_auc = self.vali(self.test_loader,
+                                                                       self.train_criterion)
             self.test_losses.append(test_loss)
             self.test_accuracies.append(test_accuracy)
             self.test_auprcs.append(test_auprc)
@@ -198,15 +235,15 @@ class Exp_ir_Classification(object):
             if early_stopping.best_score != prev_best:
                 best_ckpt = os.path.join('./checkpoints/' + setting, 'checkpoint.pth')
                 self.model.load_state_dict(torch.load(best_ckpt))
-                test_loss, test_accuracy, test_auprc, test_auc = self.vali(self.test_data, self.test_loader,
-                                                                           self.criterion)
+                test_loss, test_accuracy, test_auprc, test_auc = self.vali(self.test_loader,
+                                                                           self.vali_criterion)
                 print("New best valid -> test set results at epoch {}: acc {:.4f}, auprc {:.4f}, auc {:.4f}"
                       .format(epoch + 1, test_accuracy, test_auprc, test_auc))
 
             adjust_learning_rate(self.optimizer, epoch + 1, self.args)
             adjust_model(self.model, epoch + 1, self.args)
 
-    def vali(self, vali_data, vali_loader, criterion):
+    def vali(self, vali_loader, criterion):
         total_loss = []
         preds = []
         trues = []
@@ -232,15 +269,14 @@ class Exp_ir_Classification(object):
                         outputs, res = self.model(batch_x)
                 f_dim = -1 if self.args.features == 'MS' else 0
 
-                pred = outputs.detach().cpu()
-                true = batch_y.detach().cpu()
+                pred = outputs.detach()
+                true = batch_y.detach()
 
                 loss = criterion(pred, true)
+                total_loss.append(loss.detach().cpu().item())
 
-                total_loss.append(loss)
-
-                preds.append(outputs.detach())
-                trues.append(batch_y.detach())
+                preds.append(outputs.detach().cpu())
+                trues.append(batch_y.detach().cpu())
 
         total_loss = np.average(total_loss)
 
@@ -258,7 +294,6 @@ class Exp_ir_Classification(object):
         return total_loss, accuracy, auprc, auc
 
     def test(self, setting, test=0):
-        test_data, test_loader = self._get_data(flag='test')
         if test:
             print("Loading model")
             self.model.load_state_dict(torch.load(os.path.join('./checkpoints/' + setting, 'checkpoint.pth')))
@@ -274,7 +309,7 @@ class Exp_ir_Classification(object):
 
         self.model.eval()
         with torch.no_grad():
-            for i, (batch_x, batch_y) in tqdm(enumerate(test_loader)):
+            for i, (batch_x, batch_y) in tqdm(enumerate(self.test_loader)):
                 batch_x = batch_x[:, :, :self.dim]
                 batch_x = batch_x.float().to(self.device)
                 batch_y = batch_y.float().long().to(self.device)
@@ -318,9 +353,9 @@ class Exp_ir_Classification(object):
         auc = roc_auc_score(trues, probs.cpu().numpy()[:, 1]) if not self.args.classify_pertp else 0.
         auprc = average_precision_score(trues, probs.cpu().numpy()[:, 1]) if not self.args.classify_pertp else 0.
 
-        print('Accuracy:{}'.format(accuracy))
-        print('AUPRC:{}'.format(auprc))
-        print('AUC:{}'.format(auc))
+        # print('Accuracy:{}'.format(accuracy))
+        # print('AUPRC:{}'.format(auprc))
+        # print('AUC:{}'.format(auc))
         # result save
         folder_path = './test_results/' + setting + '/'
         if not os.path.exists(folder_path):
