@@ -10,7 +10,7 @@ from torchmetrics.classification import MulticlassAveragePrecision
 from sklearn.metrics import confusion_matrix, average_precision_score, ConfusionMatrixDisplay, precision_recall_curve, \
     auc, roc_auc_score
 
-from models import Autoformer, DLinear, TimeLLM
+from models import Autoformer, DLinear, TimeLLM, TimeLLM_4, TimeLLM_5
 
 from data_provider.data_factory import data_provider
 import time
@@ -23,7 +23,7 @@ os.environ['CURL_CA_BUNDLE'] = ''
 # os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:64"
 
 # from utils.tools import del_files, EarlyStopping, adjust_learning_rate, vali, load_content
-from utils.tools_without_mark import del_files, EarlyStopping, adjust_learning_rate, vali, test, load_content
+from utils.tools_without_mark_ir import del_files, EarlyStopping, adjust_learning_rate, vali, test, load_content
 
 parser = argparse.ArgumentParser(description='Time-LLM')
 
@@ -192,6 +192,10 @@ if args.is_training:
             model = Autoformer.Model(args).float()
         elif args.model == 'DLinear':
             model = DLinear.Model(args).float()
+        elif args.model == 'TimeLLM_4':
+            model = TimeLLM_4.Model(args).float()
+        elif args.model == 'TimeLLM_5':
+            model = TimeLLM_5.Model(args).float()
         else:
             model = TimeLLM.Model(args).float()
 
@@ -252,8 +256,9 @@ if args.is_training:
 
                 iter_count += 1
                 model_optim.zero_grad()
+                observed_data, observed_mask, observed_tp = batch_x[:, :, :dim], batch_x[:, :, dim:2 * dim], batch_x[:, :, -1]
 
-                batch_x = batch_x[:, :, :dim].float().to(accelerator.device)
+                batch_x = observed_data.float().to(accelerator.device)
                 batch_y = batch_y.squeeze().long().to(accelerator.device)
                 # observed_data, observed_mask, observed_tp = batch_x[:, :, :dim], batch_x[:, :, dim:2 * dim], batch_x[:, :, -1]
 
@@ -274,10 +279,10 @@ if args.is_training:
                     with torch.cuda.amp.autocast():
                         if args.output_attention:
                             # outputs = model(batch_x, x_mark_enc=None, x_dec=None, x_mark_dec=None)[0]["aligned_logits"]
-                            outputs = model(batch_x, x_mark_enc=None, x_dec=None, x_mark_dec=None)[0]
+                            outputs = model(batch_x, observed_mask, x_mark_enc=None, x_dec=None, x_mark_dec=None)[0]
                             # outputs = model((torch.cat((observed_data, observed_mask), 2), observed_tp), x_mark_enc=None, x_dec=None, x_mark_dec=None)[0]
                         else:
-                            outputs = model(batch_x, x_mark_enc=None, x_dec=None, x_mark_dec=None)
+                            outputs = model(batch_x, observed_mask, x_mark_enc=None, x_dec=None, x_mark_dec=None)
                             # outputs = model((torch.cat((observed_data, observed_mask), 2), observed_tp), x_mark_enc=None, x_dec=None, x_mark_dec=None)
 
                         print("model output memory allocated:", torch.cuda.memory_allocated() / (1024 ** 3))
@@ -290,10 +295,10 @@ if args.is_training:
                         train_loss.append(loss.item())
                 else:
                     if args.output_attention:
-                        outputs = model(batch_x, x_mark_enc=None, x_dec=None, x_mark_dec=None)[0]
+                        outputs = model(batch_x, observed_mask, x_mark_enc=None, x_dec=None, x_mark_dec=None)[0]
                         # outputs = model((torch.cat((observed_data, observed_mask), 2), observed_tp), x_mark_enc=None, x_dec=None, x_mark_dec=None)[0]
                     else:
-                        outputs = model(batch_x, x_mark_enc=None, x_dec=None, x_mark_dec=None)
+                        outputs = model(batch_x, observed_mask, x_mark_enc=None, x_dec=None, x_mark_dec=None)
                         # outputs = model((torch.cat((observed_data, observed_mask), 2), observed_tp), x_mark_enc=None, x_dec=None, x_mark_dec=None)
 
                     print("model output memory allocated:", torch.cuda.memory_allocated() / (1024 ** 3))
@@ -432,7 +437,7 @@ if args.is_training:
         # criterion = nn.CrossEntropyLoss()
         # # mae_metric = nn.L1Loss()
         # metric = "accuracy"
-        test(args, model, setting)
+        test(args, accelerator, model, test_loader, dim, setting)
 else:
     ii = 0
     setting = '{}_{}_{}_{}_ft{}_sl{}_ll{}_pl{}_dm{}_nh{}_el{}_dl{}_df{}_fc{}_eb{}_{}_nc{}_{}'.format(
@@ -507,7 +512,9 @@ else:
         model = Autoformer.Model(args).float()
     elif args.model == 'DLinear':
         model = DLinear.Model(args).float()
+    elif args.model == 'TimeLLM_4':
+        model = TimeLLM_4.Model(args).float()
     else:
         model = TimeLLM.Model(args).float()
 
-    test(args, model, test_loader, dim, setting)
+    test(args, accelerator, model, test_loader, dim, setting)

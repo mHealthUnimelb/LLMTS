@@ -169,9 +169,9 @@ def vali(args, accelerator, model, input_dim, vali_loader, criterion, metric):
     model.eval()
     with torch.no_grad():
         for i, (batch_x, batch_y) in tqdm(enumerate(vali_loader)):
-            # observed_data, observed_mask, observed_tp = batch_x[:, :, :dim], batch_x[:, :, dim:2 * dim], batch_x[:, :, -1]
+            observed_data, observed_mask, observed_tp = batch_x[:, :, :dim], batch_x[:, :, dim:2 * dim], batch_x[:, :, -1]
 
-            batch_x = batch_x.float().to(accelerator.device)
+            batch_x = observed_data.float().to(accelerator.device)
             batch_y = batch_y.squeeze().long().to(accelerator.device)
 
             print("batch data memory allocated in vali:", torch.cuda.memory_allocated() / (1024 ** 3))

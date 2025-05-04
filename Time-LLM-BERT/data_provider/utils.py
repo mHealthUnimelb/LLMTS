@@ -651,15 +651,13 @@ def get_data(args, dataset, device, q, upsampling_batch, split_type, flag=1):
     print("upsampling_batch", upsampling_batch)
     print("split_type", split_type)
     if dataset == 'P12':
-        # total_dataset = PhysioNet('data/physionet',
-        #                           quantization=q,
-        #                           download=True,
-        #                           device=device)
+        total_dataset = PhysioNet('data/physionet',
+                                  quantization=q,
+                                  download=True,
+                                  device=device)
         PT_dict = np.load('./data/P12data/processed_data/PTdict_list.npy', allow_pickle=True)
-        arr_outcomes = np.load('./data/P12data/processed_data/arr_outcomes.npy', allow_pickle=True)
+        # arr_outcomes = np.load('./data/P12data/processed_data/arr_outcomes.npy', allow_pickle=True)
         idx_train, idx_val, idx_test = np.load('./data/P12data/splits/phy12_split1.npy', allow_pickle=True)
-
-        total_dataset = preprocess_P12(PT_dict, arr_outcomes)
     elif dataset == 'P19':
         PT_dict = np.load('../P19data/processed_data/PT_dict_list_6.npy', allow_pickle=True)
         labels_ts = np.load('../P19data/processed_data/labels_ts.npy', allow_pickle=True)
@@ -689,9 +687,36 @@ def get_data(args, dataset, device, q, upsampling_batch, split_type, flag=1):
     #     train_data, test_data = model_selection.train_test_split(total_dataset, train_size=0.9,
     #                                                              shuffle=True)  # 80% train, 10% validation, 10% test
 
-    train_data = [total_dataset[i] for i in idx_train]
-    val_data = [total_dataset[i] for i in idx_val]
-    test_data = [total_dataset[i] for i in idx_test]
+    if dataset == 'P12':
+        # get recorde_id from PTdict_list.npy
+        print("idx_train[0]", idx_train[0])
+        train_record_ids = [PT_dict[i]['id'] for i in idx_train]
+        print("train_record_ids[0]", train_record_ids[0])
+        val_record_ids = [PT_dict[i]['id'] for i in idx_val]
+        test_record_ids = [PT_dict[i]['id'] for i in idx_test]
+
+        #  dictionary mapping record_id to its tuple
+        record_dict = {rec[0]: rec for rec in total_dataset}
+
+        # get train/val/test data
+        train_data = [record_dict[rid] for rid in train_record_ids]
+        val_data = [record_dict[rid] for rid in val_record_ids]
+        test_data = [record_dict[rid] for rid in test_record_ids]
+
+        print("train_data[0]:", train_data[0])
+        print("val_data[0]:", val_data[0])
+        print("test_data[0]:", test_data[0])
+    else:
+        train_data = [total_dataset[i] for i in idx_train]
+        print("train_data[0]:", train_data[0])
+        val_data = [total_dataset[i] for i in idx_val]
+        print("val_data[0]:", val_data[0])
+        test_data = [total_dataset[i] for i in idx_test]
+        print("test_data[0]:", test_data[0])
+
+    # train_data = [total_dataset[i] for i in idx_train]
+    # val_data = [total_dataset[i] for i in idx_val]
+    # test_data = [total_dataset[i] for i in idx_test]
     # train_data = []
     # val_data = []
     # test_data = []
