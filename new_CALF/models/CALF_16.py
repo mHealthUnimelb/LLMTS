@@ -34,7 +34,7 @@ class VocabClusterer:
 
         # Move to CPU for sklearn
         embeddings_np = word_embeddings.cpu().detach().numpy()
-        self.kmeans = MiniBatchKMeans(n_clusters=self.num_clusters, batch_size=1024,
+        self.kmeans = MiniBatchKMeans(n_clusters=self.num_clusters, batch_size=2048,
                                       random_state=self.random_state)
         self.kmeans.fit(embeddings_np)
 
@@ -368,7 +368,7 @@ class enc_mtan(nn.Module):
 class Encoder_PCA(nn.Module):
     def __init__(self, input_dim, word_embedding, hidden_dim=768, num_heads=1, num_encoder_layers=1, device='cpu',
                  num_ref_points=128, latent_dim=32, learn_emb=True, patch_len=16, stride=8, num_ca_heads=1,
-                 prompt_embeddings=None, num_clusters=10000, top_k=1000):
+                 prompt_embeddings=None, num_clusters=10000, top_k=80):
         super(Encoder_PCA, self).__init__()
         # self.linear = nn.Linear(input_dim, hidden_dim)
 
@@ -404,13 +404,15 @@ class Encoder_PCA(nn.Module):
 
         self.num_patches = math.ceil((num_ref_points - patch_len) / stride) + 1
 
-    def reduce_vocab_with_cluster(self, query_emb, top_clusters=20, top_k=50):
+    def reduce_vocab_with_cluster(self, query_emb, top_clusters=100, top_k=50):
         cluster_centers = self.vocab_cluster.cluster_centers.to(query_emb.device)  # [num_clusters, embed_dim]
 
+        query_emb_norm = F.normalize(query_emb, p=2, dim=1)
         # Coarse step: find top cluster(s)
         # (Here we just do dot product for similarity; you could do L2 distance or cos sim.)
-        sims = torch.matmul(query_emb, cluster_centers.T)  # shape [num_clusters]
+        sims = torch.matmul(query_emb_norm, F.normalize(cluster_centers, p=2, dim=1).T)  # shape [num_clusters]
         top_vals, top_ids = torch.topk(sims, k=top_clusters, dim=-1)
+        print("top_vals", top_vals)
         print("top_ids", top_ids.shape)
         chosen_clusters = torch.unique(top_ids.view(-1)).cpu().numpy().tolist()
         print("chosen_clusters", len(chosen_clusters), chosen_clusters)
@@ -425,8 +427,9 @@ class Encoder_PCA(nn.Module):
         # Dot product with each candidate
         candidate_embeddings = self.word_embeddings[candidate_token_ids].to(
             query_emb.device)  # [cluster_size, embed_dim]
-        fine_sims = torch.matmul(query_emb, candidate_embeddings.T)  # [cluster_size]
-        _, topk_indices = torch.topk(fine_sims, k=min(top_k, len(candidate_token_ids)), dim=-1)
+        fine_sims = torch.matmul(query_emb_norm, F.normalize(candidate_embeddings, p=2, dim=1).T)  # [cluster_size]
+        top_vals, topk_indices = torch.topk(fine_sims, k=min(top_k, len(candidate_token_ids)), dim=-1)
+        print("top_vals", top_vals)
         print("topk_indices", topk_indices.shape)
         topk_indices = torch.unique(topk_indices.view(-1))
         chosen_token_ids = candidate_token_ids[topk_indices.cpu().numpy()]
@@ -445,8 +448,10 @@ class Encoder_PCA(nn.Module):
         x = self.encoder(x, time_steps)
         print("x shape after encoder", x.shape)
 
-        x_pooled = x.mean(dim=1)
-        chosen_token_ids = self.reduce_vocab_with_cluster(query_emb=x_pooled, top_clusters=5000, top_k=self.top_k)
+        B, P, H = x.shape
+        query_x = x.reshape(B * P, H)
+        print("x_pooled shape", query_x.shape)
+        chosen_token_ids = self.reduce_vocab_with_cluster(query_emb=query_x, top_clusters=5000, top_k=self.top_k)
         print("chosen_token_ids", chosen_token_ids)
         word_embedding = self.word_embeddings[chosen_token_ids].to(x.device)
         print("word_embedding shape", word_embedding.shape)

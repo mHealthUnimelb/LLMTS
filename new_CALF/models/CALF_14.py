@@ -1,4 +1,5 @@
 # first encode, then patching, add variable-wise attention
+# with LSTM
 # use linear mapping to reduce vocab_size
 import torch
 import torch.nn as nn

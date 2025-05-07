@@ -1,75 +1,75 @@
 model_name=TimeLLM
 train_epochs=100
-learning_rate=0.01
-llama_layers=32
+learning_rate=0.001
+llama_layers=6
 
 master_port=2047
 num_process=1
-batch_size=24
+batch_size=32
 d_model=32
 d_ff=128
 
 comment='TimeLLM-ECG'
 
-#accelerate launch --mixed_precision bf16 --num_processes $num_process --main_process_port $master_port run_classification_without_mark.py \
-#  --task_name classification \
-#  --is_training 1 \
-#  --root_path ./dataset/ECG/ \
-#  --data_path x_train.pkl \
-#  --model_id ECG_512_96 \
-#  --model $model_name \
-#  --data ECG \
-#  --features M \
-#  --seq_len 2500 \
-#  --num_classes 4 \
-#  --label_len 0 \
-#  --pred_len 0 \
-#  --factor 3 \
-#  --enc_in 2 \
-#  --dec_in 2 \
-#  --c_out 2 \
-#  --des 'Exp' \
-#  --itr 1 \
-#  --d_model $d_model \
-#  --d_ff $d_ff \
-#  --batch_size $batch_size \
-#  --learning_rate $learning_rate \
-#  --llm_model GPT2 \
-#  --llm_dim 768 \
-#  --llm_layers $llama_layers \
-#  --train_epochs $train_epochs \
-#  --model_comment $comment
+accelerate launch --mixed_precision bf16 --num_processes $num_process --main_process_port $master_port run_classification_without_mark.py \
+ --task_name classification \
+ --is_training 1 \
+ --root_path ./dataset/ECG/ \
+ --data_path x_train.pkl \
+ --model_id ECG_512_96 \
+ --model $model_name \
+ --data ECG \
+ --features M \
+ --seq_len 2500 \
+ --num_classes 4 \
+ --label_len 0 \
+ --pred_len 0 \
+ --factor 3 \
+ --enc_in 2 \
+ --dec_in 2 \
+ --c_out 2 \
+ --des 'Exp' \
+ --itr 1 \
+ --d_model $d_model \
+ --d_ff $d_ff \
+ --batch_size $batch_size \
+ --learning_rate $learning_rate \
+ --llm_model GPT2 \
+ --llm_dim 768 \
+ --llm_layers $llama_layers \
+ --train_epochs $train_epochs \
+ --model_comment $comment
 
 # test
-accelerate launch --mixed_precision bf16 --num_processes $num_process --main_process_port $master_port run_classification_without_mark.py \
-  --task_name classification \
-  --is_training 0 \
-  --root_path ./dataset/ECG/ \
-  --data_path x_test.pkl \
-  --model_id ECG_512_96 \
-  --model $model_name \
-  --data ECG \
-  --prompt_domain 1 \
-  --features M \
-  --seq_len 2500 \
-  --num_classes 4 \
-  --label_len 48 \
-  --pred_len 96 \
-  --factor 3 \
-  --enc_in 2 \
-  --dec_in 2 \
-  --c_out 2 \
-  --des 'Exp' \
-  --itr 1 \
-  --d_model $d_model \
-  --d_ff $d_ff \
-  --batch_size $batch_size \
-  --learning_rate $learning_rate \
-  --llm_model GPT2 \
-  --llm_dim 768 \
-  --llm_layers $llama_layers \
-  --train_epochs $train_epochs \
-  --model_comment $comment
+# accelerate launch --mixed_precision bf16 --num_processes $num_process --main_process_port $master_port run_classification_without_mark.py \
+#   --task_name classification \
+#   --is_training 0 \
+#   --root_path ./dataset/ECG/ \
+#   --data_path x_test.pkl \
+#   --model_id ECG_512_96 \
+#   --model $model_name \
+#   --data ECG \
+#   --prompt_domain 1 \
+#   --features M \
+#   --seq_len 2500 \
+#   --num_classes 4 \
+#   --label_len 48 \
+#   --pred_len 96 \
+#   --factor 3 \
+#   --enc_in 2 \
+#   --dec_in 2 \
+#   --c_out 2 \
+#   --des 'Exp' \
+#   --itr 1 \
+#   --d_model $d_model \
+#   --d_ff $d_ff \
+#   --batch_size $batch_size \
+#   --learning_rate $learning_rate \
+#   --llm_model GPT2 \
+#   --llm_dim 768 \
+#   --llm_layers $llama_layers \
+#   --train_epochs $train_epochs \
+#   --model_comment $comment
 
 #accelerate launch --multi_gpu --mixed_precision bf16 --num_processes $num_process --main_process_port $master_port run_main.py \
 #  --task_name long_term_forecast \

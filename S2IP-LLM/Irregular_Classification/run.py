@@ -8,11 +8,6 @@ from exp.exp_ir_classification import Exp_ir_Classification
 import random
 import numpy as np
 
-fix_seed = 2021
-random.seed(fix_seed)
-torch.manual_seed(fix_seed)
-np.random.seed(fix_seed)
-
 parser = argparse.ArgumentParser(description='TimesNet')
 
 # basic config
@@ -22,10 +17,11 @@ parser.add_argument('--is_training', type=int, required=True, default=1, help='s
 parser.add_argument('--model_id', type=str, required=True, default='test', help='model id')
 parser.add_argument('--model', type=str, required=True, default='Autoformer',
                     help='model name, options: [Autoformer, Transformer, TimesNet]')
+parser.add_argument('--seed', type=int, default=2021, help='random seed')
 
 # data loader
 parser.add_argument('--data', type=str, required=True, default='ETTh1', help='dataset type')
-parser.add_argument('--data_split_path', type=str)
+parser.add_argument('--data_split_path', type=str, default='')
 parser.add_argument('--number_variable', type=int,default=7, help='number of variable')
 
 parser.add_argument('--root_path', type=str, default='./data/raw_data/ETTh1/', help='root path of the data file')
@@ -36,6 +32,8 @@ parser.add_argument('--target', type=str, default='OT', help='target feature in 
 parser.add_argument('--freq', type=str, default='h',
                     help='freq for time features encoding, options:[s:secondly, t:minutely, h:hourly, d:daily, b:business days, w:weekly, m:monthly], you can also use more detailed freq like 15min or 3h')
 parser.add_argument('--checkpoints', type=str, default='./checkpoints/', help='location of model checkpoints')
+parser.add_argument('--quantization', type=float, default=0.016,
+                        help="Quantization on the physionet dataset.")
 parser.add_argument('--classif', action='store_true',
                     help="Include binary classification loss")
 parser.add_argument('--classify-pertp', action='store_true')
@@ -130,6 +128,11 @@ if args.use_gpu and args.use_multi_gpu:
     args.device_ids = [int(id_) for id_ in device_ids]
     args.gpu = args.device_ids[0]
 
+fix_seed = args.seed
+random.seed(fix_seed)
+torch.manual_seed(fix_seed)
+np.random.seed(fix_seed)
+
 print('Args in experiment:')
 print(args)
 
@@ -148,14 +151,18 @@ if args.is_training:
     accuraies = []
     auprcs = []
     aucs = []
+    precisions = []
+    recalls = []
+    f1s = []
 
     for ii in range(args.itr):
         # setting record of experiments
-        setting = '{}_{}_{}_{}_ft{}_sl{}_ll{}_pl{}_dm{}_nh{}_el{}_dl{}_df{}_fc{}_eb{}_dt{}_{}_{}'.format(
+        setting = '{}_{}_{}_{}_{}_ft{}_sl{}_ll{}_pl{}_dm{}_nh{}_el{}_dl{}_df{}_fc{}_eb{}_dt{}_{}_{}'.format(
             args.task_name,
             args.model_id,
             args.model,
             args.data,
+            args.data_split_path.split("/")[-1].rsplit(".", 1)[0],
             args.features,
             args.seq_len,
             args.label_len,
@@ -184,35 +191,52 @@ if args.is_training:
 
         best_model_path = path + '/' + 'checkpoint.pth'
         exp.model.load_state_dict(torch.load(best_model_path))
-       
+
         if args.task_name == 'long_term_forecast':
             mse, mae = exp.test(setting)
             mses.append(mse)
             maes.append(mae)
-            torch.cuda.empty_cache()
-
-
         elif args.task_name == 'ir_classification':
-            accuracy, auprc, auc = exp.test(setting)
-            accuraies.append(accuracy)
-            auprcs.append(auprc)
-            aucs.append(auc)
+            if args.data == 'P12' or args.data == 'P19' or args.data == 'eICU' or args.data == 'MIMIC':
+                accuracy, auprc, auc = exp.test(setting)
+                accuraies.append(accuracy)
+                auprcs.append(auprc)
+                aucs.append(auc)
+            elif args.data == 'PAM' or args.data == 'activity':
+                accuracy, auprc, auc, precision, recall, F1 = exp.test(setting)
+                accuraies.append(accuracy)
+                auprcs.append(auprc)
+                aucs.append(auc)
+                precisions.append(precision)
+                recalls.append(recall)
+                f1s.append(F1)
+
+        torch.cuda.empty_cache()
 
     if args.task_name == 'long_term_forecast':
         print('mse_means: ', np.array(mses),'mean: ', np.mean(np.array(mses)))
         print('mae_means: ', np.array(maes),'mean: ', np.mean(np.array(maes)))
     elif args.task_name == 'ir_classification':
-        print('accuracy:', np.mean(np.array(accuraies)))
-        print('auprc:', np.mean(np.array(auprcs)))
-        print('auc:', np.mean(np.array(aucs)))
-   
+        if args.data == 'P12' or args.data == 'P19' or args.data == 'eICU' or args.data == 'MIMIC':
+            print('accuracy:', np.mean(np.array(accuraies)))
+            print('auprc:', np.mean(np.array(auprcs)))
+            print('auc:', np.mean(np.array(aucs)))
+        elif args.data == 'PAM':
+            print('accuracy:', np.mean(np.array(accuraies)))
+            print('auprc:', np.mean(np.array(auprcs)))
+            print('auc:', np.mean(np.array(aucs)))
+            print('precision:', np.mean(np.array(precisions)))
+            print('recall:', np.mean(np.array(recalls)))
+            print('F1 score:', np.mean(np.array(f1s)))
+
 else:
     ii = 0
-    setting = '{}_{}_{}_{}_ft{}_sl{}_ll{}_pl{}_dm{}_nh{}_el{}_dl{}_df{}_fc{}_eb{}_dt{}_{}_{}'.format(
+    setting = '{}_{}_{}_{}_{}_ft{}_sl{}_ll{}_pl{}_dm{}_nh{}_el{}_dl{}_df{}_fc{}_eb{}_dt{}_{}_{}'.format(
         args.task_name,
         args.model_id,
         args.model,
         args.data,
+        args.data_split_path.split("/")[-1].rsplit(".", 1)[0],
         args.features,
         args.seq_len,
         args.label_len,
@@ -229,5 +253,22 @@ else:
 
     exp = Exp(args)  # set experiments
     print('>>>>>>>testing : {}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<'.format(setting))
-    exp.test(setting, test=1)
+    if args.task_name == 'long_term_forecast':
+        mse, mae = exp.test(setting, test=1)
+        print("mse:", mse)
+        print("mae:", mae)
+    elif args.task_name == 'ir_classification':
+        if args.data == 'P12' or args.data == 'P19' or args.data == 'eICU' or args.data == 'MIMIC':
+            accuracy, auprc, auc = exp.test(setting, test=1)
+            print('accuracy:', accuracy)
+            print('auprc:', auprc)
+            print('auc:', auc)
+        elif args.data == 'PAM' or args.data == 'activity':
+            accuracy, auprc, auc, precision, recall, F1 = exp.test(setting, test=1)
+            print('accuracy:', accuracy)
+            print('auprc:', auprc)
+            print('auc:', auc)
+            print('precision:', precision)
+            print('recall:', recall)
+            print('F1 score:', F1)
     torch.cuda.empty_cache()

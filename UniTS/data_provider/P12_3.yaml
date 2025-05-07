@@ -1,0 +1,13 @@
+task_dataset:
+  P12: # the dataset and task name
+    task_name: classification # the type of task
+    dataset: P12 # the name of the dataset
+    data: UEA # the data type of the dataset, use UEA if you use the '.ts' file
+    embed: timeF # the embedding method used
+    root_path: ./data/P12_3 # the root path of the dataset
+    seq_len: 2881 # the length of the input sequence
+    label_len: 0 # the length of the label sequence, 0 for classification
+    pred_len: 0 # the length of the predicted sequence, 0 for classification
+    enc_in: 41 # the number of variable numbers
+    num_class: 2 # the number of classes
+    c_out: 0 # the output variable numbers, 0 for classification

@@ -1,16 +1,17 @@
 CUDA_VISIBLE_DEVICES=0 python -u run.py \
   --task_name ir_classification \
   --is_training 1 \
-  --root_path ./dataP12 \
-  --data_path P12 \
-  --model_id P12 \
+  --root_path ./MIMIC \
+  --data_path MIMIC \
+  --model_id MIMIC \
   --model S2IPLLM \
-  --data P12 \
-  --data_split_path ./data/P12data/splits/phy12_split5.npy \
-  --number_variable 41 \
+  --data MIMIC \
+  --data_split_path ./MIMIC_split3.npy \
+  --seed 123 \
+  --number_variable 96 \
   --features M \
   --seq_len 2880 \
-  --feature_dim 41 \
+  --feature_dim 96 \
   --label_len 1 \
   --pred_len 0 \
   --enc_in 7 \
@@ -26,7 +27,7 @@ CUDA_VISIBLE_DEVICES=0 python -u run.py \
   --stride 32 \
   --add_prompt 1 \
   --prompt_length 4 \
-  --batch_size 24 \
+  --batch_size 16 \
   --sim_coef -0.05 \
   --pool_size  1000 \
   --percent 100 \

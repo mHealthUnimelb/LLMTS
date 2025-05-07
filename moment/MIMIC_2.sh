@@ -1,0 +1,21 @@
+python run.py \
+  --seed 12 \
+  --task_name classification \
+  --is_training 1 \
+  --data MIMIC \
+  --root_path ./data/MIMIC \
+  --data_path MIMIC \
+  --data_split_path ./MIMIC_split2.npy \
+  --model_id MIMIC \
+  --seq_len 2880 \
+  --num_variables 96 \
+  --itr 1 \
+  --train_epochs 100 \
+  --batch_size 32 \
+  --patience 10 \
+  --learning_rate 0.0001 \
+  --des 'Exp' \
+  --loss 'CE' \
+  --lradj type1 \
+  --num_classes 2 \
+  --classif

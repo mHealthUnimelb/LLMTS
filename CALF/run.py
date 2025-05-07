@@ -6,16 +6,12 @@ from exp.exp_imputation import Exp_Imputation
 from exp.exp_short_term_forecasting import Exp_Short_Term_Forecast
 from exp.exp_anomaly_detection import Exp_Anomaly_Detection
 from exp.exp_classification import Exp_Classification
+from exp.exp_ir_classification import Exp_IR_Classification
 from utils.print_args import print_args
 import random
 import numpy as np
 
 if __name__ == '__main__':
-    fix_seed = 2021
-    random.seed(fix_seed)
-    torch.manual_seed(fix_seed)
-    np.random.seed(fix_seed)
-
     parser = argparse.ArgumentParser(description='TimesNet')
 
     # basic config
@@ -25,17 +21,25 @@ if __name__ == '__main__':
     parser.add_argument('--model_id', type=str, required=True, default='test', help='model id')
     parser.add_argument('--model', type=str, required=True, default='Autoformer',
                         help='model name, options: [Autoformer, Transformer, TimesNet]')
+    parser.add_argument('--seed', type=int, default=2021, help='random seed')
 
     # data loader
     parser.add_argument('--data', type=str, required=True, default='ETTm1', help='dataset type')
+    parser.add_argument('--data_type', type=str, default='regular', help='data type (regular or irregular)')
     parser.add_argument('--root_path', type=str, default='./data/ETT/', help='root path of the data file')
     parser.add_argument('--data_path', type=str, default='ETTh1.csv', help='data file')
+    parser.add_argument('--data_split_path', type=str)
     parser.add_argument('--features', type=str, default='M',
                         help='forecasting task, options:[M, S, MS]; M:multivariate predict multivariate, S:univariate predict univariate, MS:multivariate predict univariate')
     parser.add_argument('--target', type=str, default='OT', help='target feature in S or MS task')
     parser.add_argument('--freq', type=str, default='h',
                         help='freq for time features encoding, options:[s:secondly, t:minutely, h:hourly, d:daily, b:business days, w:weekly, m:monthly], you can also use more detailed freq like 15min or 3h')
     parser.add_argument('--checkpoints', type=str, default='./checkpoints/', help='location of model checkpoints')
+    parser.add_argument('--quantization', type=float, default=0.016,
+                        help="Quantization on the physionet dataset.")
+    parser.add_argument('--classif', action='store_true',
+                        help="Include binary classification loss")
+    parser.add_argument('--classify-pertp', action='store_true')
 
     # forecasting task
     parser.add_argument('--seq_len', type=int, default=96, help='input sequence length')
@@ -125,6 +129,8 @@ if __name__ == '__main__':
     parser.add_argument('--target_data', type=str, default="ETTm1", help='target data for zero shot')
 
     args = parser.parse_args()
+    print("success")
+
     args.use_gpu = True if torch.cuda.is_available() and args.use_gpu else False
 
     if args.use_gpu and args.use_multi_gpu:
@@ -133,21 +139,40 @@ if __name__ == '__main__':
         args.device_ids = [int(id_) for id_ in device_ids]
         args.gpu = args.device_ids[0]
 
+    fix_seed = args.seed
+    random.seed(fix_seed)
+    torch.manual_seed(fix_seed)
+    np.random.seed(fix_seed)
+
     print('Args in experiment:')
     print_args(args)
 
-    if args.task_name == 'long_term_forecast':
-        Exp = Exp_Long_Term_Forecast
-    elif args.task_name == 'short_term_forecast':
-        Exp = Exp_Short_Term_Forecast
-    elif args.task_name == 'imputation':
-        Exp = Exp_Imputation
-    elif args.task_name == 'anomaly_detection':
-        Exp = Exp_Anomaly_Detection
-    elif args.task_name == 'classification':
-        Exp = Exp_Classification
-    else:
-        Exp = Exp_Long_Term_Forecast
+    if args.data_type == 'regular':
+        if args.task_name == 'long_term_forecast':
+            Exp = Exp_Long_Term_Forecast
+        elif args.task_name == 'short_term_forecast':
+            Exp = Exp_Short_Term_Forecast
+        elif args.task_name == 'imputation':
+            Exp = Exp_Imputation
+        elif args.task_name == 'anomaly_detection':
+            Exp = Exp_Anomaly_Detection
+        elif args.task_name == 'classification':
+            Exp = Exp_Classification
+        else:
+            Exp = Exp_Long_Term_Forecast
+    elif args.data_type == 'irregular':
+        if args.task_name == 'long_term_forecast':
+            Exp = Exp_Long_Term_Forecast
+        elif args.task_name == 'short_term_forecast':
+            Exp = Exp_Short_Term_Forecast
+        elif args.task_name == 'imputation':
+            Exp = Exp_Imputation
+        elif args.task_name == 'anomaly_detection':
+            Exp = Exp_Anomaly_Detection
+        elif args.task_name == 'classification':
+            Exp = Exp_IR_Classification
+        else:
+            Exp = Exp_Long_Term_Forecast
 
     if args.is_training:
         for ii in range(args.itr):
@@ -183,7 +208,7 @@ if __name__ == '__main__':
             exp.train(setting)
 
             print('>>>>>>>testing : {}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<'.format(setting))
-            exp.test(setting)
+            exp.test(args, setting)
             torch.cuda.empty_cache()
     else:
         ii = 0
@@ -213,8 +238,8 @@ if __name__ == '__main__':
             args.lora_alpha,
             ii)
 
-        setting = 'classification_ECG_CALF_2500_0_CALF_ECG_ftM_sl2500_ll0_pl0_dm768_nh4_el2_dl1_df768_fc1_ebtimeF_dtTrue_test_gpt6_lr0.0005_wepwte_pca_600.pt_task_w1.0_r32_lora_alpha64_0'
+        # setting = 'classification_ECG_CALF_2500_0_CALF_ECG_ftM_sl2500_ll0_pl0_dm768_nh4_el2_dl1_df768_fc1_ebtimeF_dtTrue_test_gpt6_lr0.0005_wepwte_pca_600.pt_task_w1.0_r32_lora_alpha64_0'
         exp = Exp(args)  # set experiments
         print('>>>>>>>testing : {}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<'.format(setting))
-        exp.test(setting, test=1)
+        exp.test(args, setting, test=1)
         torch.cuda.empty_cache()

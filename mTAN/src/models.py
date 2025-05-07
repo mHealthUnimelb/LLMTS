@@ -278,6 +278,7 @@ class enc_mtan_classif_activity(nn.Module):
     
        
     def forward(self, x, time_steps):
+        print("x shape", x.shape) # [256, 50, 24]
         batch = x.size(0)
         time_steps = time_steps.cpu()
         mask = x[:, :, self.dim:]
@@ -288,7 +289,9 @@ class enc_mtan_classif_activity(nn.Module):
             key = self.time_embedding(time_steps, self.embed_time).to(self.device)
         out = self.att(key, key, x, mask)
         out, _ = self.gru(out)
+        print("gru out shape", out.shape) # [256, 50, 512]
         out = self.classifier(out)
+        print("out shape", out.shape) # [256, 50, 11]
         return out
     
     

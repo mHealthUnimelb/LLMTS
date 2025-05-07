@@ -36,7 +36,7 @@ def data_provider(args, flag):
     if args.task_name == 'classification':
         if args.data == 'P12' or args.data == 'P19' or args.data == 'PAM':
             data_set = Data(args=args, dataset=args.data, device=torch.device("cpu"), q=args.quantization,
-                            upsampling_batch=True,
+                            upsampling_batch=False,
                             split_type='random')
             # data_loader =
             # if flag == 'train':

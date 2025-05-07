@@ -2,39 +2,33 @@ import argparse
 import os
 import torch
 
-from exp.exp_ir_classification import Exp_ir_Classification
+from exp.exp_ir_classification import Exp_IR_Classification
 
 import random
 import numpy as np
 
-fix_seed = 2021
-random.seed(fix_seed)
-torch.manual_seed(fix_seed)
-np.random.seed(fix_seed)
-
-parser = argparse.ArgumentParser(description='TimesNet')
+parser = argparse.ArgumentParser(description='Moment')
 
 # basic config
 parser.add_argument('--task_name', type=str, required=True, default='long_term_forecast',
                     help='task name, options:[long_term_forecast, short_term_forecast, imputation, classification, anomaly_detection]')
 parser.add_argument('--is_training', type=int, required=True, default=1, help='status')
 parser.add_argument('--model_id', type=str, required=True, default='test', help='model id')
-# parser.add_argument('--model', type=str, required=True, default='Autoformer',
-#                     help='model name, options: [Autoformer, Transformer, TimesNet]')
+parser.add_argument('--seed', type=int, default=2021, help='random seed')
 
 # data loader
 parser.add_argument('--data', type=str, required=True, default='ETTh1', help='dataset type')
-parser.add_argument('--number_variable', type=int, default=7, help='number of variable')
+parser.add_argument('--num_variables', type=int, default=7, help='number of variable')
 
 parser.add_argument('--root_path', type=str, default='./data/raw_data/ETTh1/', help='root path of the data file')
 parser.add_argument('--data_path', type=str, default='ETTh1.csv', help='data file')
-parser.add_argument('--features', type=str, default='M',
-                    help='forecasting task, options:[M, S, MS]; M:multivariate predict multivariate, S:univariate predict univariate, MS:multivariate predict univariate')
+parser.add_argument('--data_split_path', type=str)
+# parser.add_argument('--features', type=str, default='M',
+#                     help='forecasting task, options:[M, S, MS]; M:multivariate predict multivariate, S:univariate predict univariate, MS:multivariate predict univariate')
 # parser.add_argument('--target', type=str, default='OT', help='target feature in S or MS task')
-parser.add_argument('--freq', type=str, default='h',
-                    help='freq for time features encoding, options:[s:secondly, t:minutely, h:hourly, d:daily, b:business days, w:weekly, m:monthly], you can also use more detailed freq like 15min or 3h')
+# parser.add_argument('--freq', type=str, default='h',
+#                     help='freq for time features encoding, options:[s:secondly, t:minutely, h:hourly, d:daily, b:business days, w:weekly, m:monthly], you can also use more detailed freq like 15min or 3h')
 parser.add_argument('--checkpoints', type=str, default='./checkpoints/', help='location of model checkpoints')
-parser.add_argument('--n', type=int, default=8000)
 parser.add_argument('--quantization', type=float, default=0.1,
                     help="Quantization on the physionet dataset.")
 parser.add_argument('--classif', action='store_true',
@@ -67,10 +61,10 @@ parser.add_argument('--num_classes', type=int, default=2, help='number of class'
 #                     help='whether to use distilling in encoder, using this argument means not using distilling',
 #                     default=True)
 # parser.add_argument('--dropout', type=float, default=0.1, help='dropout')
-parser.add_argument('--embed', type=str, default='timeF',
-                    help='time features encoding, options:[timeF, fixed, learned]')
+# parser.add_argument('--embed', type=str, default='timeF',
+#                     help='time features encoding, options:[timeF, fixed, learned]')
 # parser.add_argument('--activation', type=str, default='gelu', help='activation')
-parser.add_argument('--output_attention', action='store_true', help='whether to output attention in ecoder')
+# parser.add_argument('--output_attention', action='store_true', help='whether to output attention in ecoder')
 # parser.add_argument('--feature_dim', type=int, default=41, help='num of features in the dataset')
 
 # optimization
@@ -83,7 +77,7 @@ parser.add_argument('--learning_rate', type=float, default=0.0001, help='optimiz
 parser.add_argument('--des', type=str, default='test', help='exp description')
 parser.add_argument('--loss', type=str, default='MSE', help='loss function')
 parser.add_argument('--lradj', type=str, default='type2', help='adjust learning rate')
-parser.add_argument('--use_amp', action='store_true', help='use automatic mixed precision training', default=False)
+# parser.add_argument('--use_amp', action='store_true', help='use automatic mixed precision training', default=False)
 parser.add_argument('--decay_fac', type=float, default=0.75)
 
 # GPU
@@ -93,9 +87,9 @@ parser.add_argument('--use_multi_gpu', action='store_true', help='use multiple g
 parser.add_argument('--devices', type=str, default='0,1,2,3', help='device ids of multile gpus')
 
 # de-stationary projector params
-parser.add_argument('--p_hidden_dims', type=int, nargs='+', default=[128, 128],
-                    help='hidden layer dimensions of projector (List)')
-parser.add_argument('--p_hidden_layers', type=int, default=2, help='number of hidden layers in projector')
+# parser.add_argument('--p_hidden_dims', type=int, nargs='+', default=[128, 128],
+#                     help='hidden layer dimensions of projector (List)')
+# parser.add_argument('--p_hidden_layers', type=int, default=2, help='number of hidden layers in projector')
 
 # patching
 # parser.add_argument('--patch_size', type=int, default=1)
@@ -104,7 +98,7 @@ parser.add_argument('--p_hidden_layers', type=int, default=2, help='number of hi
 # parser.add_argument('--ln', type=int, default=0)
 # parser.add_argument('--mlp', type=int, default=0)
 # parser.add_argument('--weight', type=float, default=0)
-parser.add_argument('--percent', type=int, default=5)
+# parser.add_argument('--percent', type=int, default=5)
 # parser.add_argument('--pretrained', action='store_false', help='use finetuned GPT2', default=True)
 
 # parser.add_argument('--tokenization', type=str, default='patch', help='tokenization_method')
@@ -129,11 +123,16 @@ if args.use_gpu and args.use_multi_gpu:
     args.device_ids = [int(id_) for id_ in device_ids]
     args.gpu = args.device_ids[0]
 
+fix_seed = args.seed
+random.seed(fix_seed)
+torch.manual_seed(fix_seed)
+np.random.seed(fix_seed)
+
 print('Args in experiment:')
 print(args)
 
-if args.task_name == 'ir_classification':
-    Exp = Exp_ir_Classification
+if args.task_name == 'classification':
+    Exp = Exp_IR_Classification
 
 if args.is_training:
     mses = []
@@ -145,15 +144,17 @@ if args.is_training:
     accuraies = []
     auprcs = []
     aucs = []
+    precisions = []
+    recalls = []
+    f1s = []
 
     for ii in range(args.itr):
         # setting record of experiments
-        setting = '{}_{}_{}_{}_eb{}_{}'.format(
+        setting = '{}_{}_{}_{}_{}'.format(
             args.task_name,
-            args.model_id,
             args.data,
+            args.data_split_path.split("/")[-1].rsplit(".", 1)[0],
             args.seq_len,
-            args.embed,
             ii)
 
         path = os.path.join(args.checkpoints, setting)
@@ -174,34 +175,59 @@ if args.is_training:
             mse, mae = exp.test(setting)
             mses.append(mse)
             maes.append(mae)
-            torch.cuda.empty_cache()
-
-
-        elif args.task_name == 'ir_classification':
-            accuracy, auprc, auc = exp.test(setting)
-            accuraies.append(accuracy)
-            auprcs.append(auprc)
-            aucs.append(auc)
+        elif args.task_name == 'classification':
+            if args.data == 'P12' or args.data == 'P19' or args.data == 'eICU' or args.data == 'MIMIC':
+                accuracy, auprc, auc = exp.test(setting)
+                accuraies.append(accuracy)
+                auprcs.append(auprc)
+                aucs.append(auc)
+            elif args.data == 'PAM':
+                accuracy, precision, recall, F1 = exp.test(setting)
+                accuraies.append(accuracy)
+                precisions.append(precision)
+                recalls.append(recall)
+                f1s.append(F1)
+        torch.cuda.empty_cache()
 
     if args.task_name == 'long_term_forecast':
         print('mse_means: ', np.array(mses), 'mean: ', np.mean(np.array(mses)))
         print('mae_means: ', np.array(maes), 'mean: ', np.mean(np.array(maes)))
-    elif args.task_name == 'ir_classification':
-        print('accuracy:', np.mean(np.array(accuraies)))
-        print('auprc:', np.mean(np.array(auprcs)))
-        print('auc:', np.mean(np.array(aucs)))
+    elif args.task_name == 'classification':
+        if args.data == 'P12' or args.data == 'P19' or args.data == 'eICU' or args.data == 'MIMIC':
+            print('accuracy:', np.mean(np.array(accuraies)))
+            print('auprc:', np.mean(np.array(auprcs)))
+            print('auc:', np.mean(np.array(aucs)))
+        elif args.data == 'PAM':
+            print('accuracy:', np.mean(np.array(accuraies)))
+            print('precision:', np.mean(np.array(precisions)))
+            print('recall:', np.mean(np.array(recalls)))
+            print('F1 score:', np.mean(np.array(f1s)))
 
 else:
     ii = 0
-    setting = '{}_{}_{}_{}_eb{}_{}'.format(
+    setting = '{}_{}_{}_{}_{}'.format(
         args.task_name,
-        args.model_id,
         args.data,
+        args.data_split_path.split("/")[-1].rsplit(".", 1)[0],
         args.seq_len,
-        args.embed,
         ii)
 
     exp = Exp(args)  # set experiments
     print('>>>>>>>testing : {}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<'.format(setting))
-    exp.test(setting, test=1)
+    if args.task_name == 'long_term_forecast':
+        mse, mae = exp.test(setting, test=1)
+        print("mse:", mse)
+        print("mae:", mae)
+    elif args.task_name == 'classification':
+        if args.data == 'P12' or args.data == 'P19' or args.data == 'eICU' or args.data == 'MIMIC':
+            accuracy, auprc, auc = exp.test(setting, test=1)
+            print('accuracy:', accuracy)
+            print('auprc:', auprc)
+            print('auc:', auc)
+        elif args.data == 'PAM':
+            accuracy, precision, recall, F1 = exp.test(setting, test=1)
+            print('accuracy:', accuracy)
+            print('precision:', precision)
+            print('recall:', recall)
+            print('F1 score:', F1)
     torch.cuda.empty_cache()

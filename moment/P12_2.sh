@@ -1,0 +1,21 @@
+python run.py \
+  --task_name classification \
+  --is_training 1 \
+  --data P12 \
+  --root_path ./data/P12 \
+  --data_path P12 \
+  --data_split_path ./data/P12data/splits/phy12_split2.npy \
+  --model_id P12 \
+  --seq_len 2881 \
+  --num_variables 41 \
+  --itr 1 \
+  --train_epochs 100 \
+  --batch_size 32 \
+  --patience 10 \
+  --learning_rate 0.0001 \
+  --des 'Exp' \
+  --loss 'CE' \
+  --lradj type1 \
+  --num_classes 2 \
+  --quantization 0.016 \
+  --classif

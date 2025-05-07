@@ -3,11 +3,11 @@
 #SBATCH --account="punim2341"
 #SBATCH --partition=gpu-a100
 #SBATCH --nodes=1
-#SBATCH --ntasks=1
-#SBATCH --ntasks-per-node=1
-#SBATCH --time=18:00:00
+#SBATCH --ntasks=2
+#SBATCH --ntasks-per-node=2
+#SBATCH --time=60:00:00
 #SBATCH --gres=gpu:1
-#SBATCH --mem-per-cpu=40G
+#SBATCH --mem-per-cpu=100G
 
 module purge
 module load foss/2022a
@@ -15,7 +15,7 @@ module load Anaconda3/2022.10
 eval "$(conda shell.bash hook)"
 conda activate S2IP_LLM
 cd Irregular_Classification
-bash scripts/P12.sh
+bash scripts/MIMIC_3.sh
 
 ##DO NOT ADD/EDIT BEYOND THIS LINE##
 ##Job monitor command to list the resource usage

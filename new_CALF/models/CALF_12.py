@@ -1,4 +1,5 @@
 # first encode, then patching, add variable-wise attention
+# use LSTM
 import torch
 import torch.nn as nn
 import torch.nn.functional as F

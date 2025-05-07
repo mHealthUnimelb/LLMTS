@@ -1,6 +1,7 @@
 from data_provider.data_loader import Dataset_ETT_hour, Dataset_ETT_minute, Dataset_Custom, Dataset_M4, PSMSegLoader, \
-    MSLSegLoader, SMAPSegLoader, SMDSegLoader, SWATSegLoader, UEAloader, Dataset_ECG
+    MSLSegLoader, SMAPSegLoader, SMDSegLoader, SWATSegLoader, UEAloader, Dataset_ECG, Dataset_P12, Dataset_MIMIC, Dataset_activity
 from data_provider.uea import collate_fn
+import torch
 from torch.utils.data import DataLoader
 
 data_dict = {
@@ -16,7 +17,10 @@ data_dict = {
     'SMD': SMDSegLoader,
     'SWAT': SWATSegLoader,
     'UEA': UEAloader,
-    'ECG': Dataset_ECG
+    'ECG': Dataset_ECG,
+    'P12': Dataset_P12,
+    'MIMIC': Dataset_MIMIC,
+    'activity': Dataset_activity,
 }
 
 
@@ -55,6 +59,9 @@ def data_provider(args, flag, vali=False):
             drop_last=drop_last)
         return data_set, data_loader
     elif args.task_name == 'classification':
+        if args.data == 'P12' or args.data == 'P19' or args.data == 'PAM' or args.data == 'MIMIC' or args.data == 'activity':
+            data_set = Data(args=args, dataset=args.data, device=torch.device("cpu"), q=args.quantization, upsampling_batch=False)
+            return data_set, None
         drop_last = False
         data_set = Data(
             root_path=args.root_path,

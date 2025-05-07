@@ -67,8 +67,13 @@ class Model(nn.Module):
         elif self.task_name == "ir_classification":
             self.num_classes = configs.num_classes
             self.in_layer = nn.Linear(configs.patch_size * 3, configs.d_model)
-            self.classifier = nn.Linear(int(configs.d_model / 3 * (self.patch_num + configs.prompt_length) * configs.feature_dim),
-                                        self.num_classes)
+            
+            if self.configs.classify_pertp:
+                self.projection_layer = nn.Linear(int(configs.d_model / 3 * (self.patch_num + configs.prompt_length)), configs.seq_len)
+                self.classifier = nn.Linear(configs.feature_dim, self.num_classes)
+            else:
+                self.classifier = nn.Linear(int(configs.d_model / 3 * (self.patch_num + configs.prompt_length) * configs.feature_dim),
+                                            self.num_classes)
 
             self.prompt_pool = Prompt(length=1, embed_dim=768, embedding_key='mean', prompt_init='uniform',
                                       prompt_pool=False,
@@ -202,10 +207,18 @@ class Model(nn.Module):
         print("outputs shape: ", outputs.shape) # [3, 83, 3, 93184]
         outputs = outputs.sum(dim=2)
         print("outputs shape: ", outputs.shape) # [3, 83, 93184]
-        outputs = outputs.reshape(B, -1)
-        print("outputs shape: ", outputs.shape) # [3, 7734272]
 
-        logits = self.classifier(outputs)
+        if self.configs.classify_pertp:
+            outputs = self.projection_layer(outputs)
+            outputs = outputs.permute(0, 2, 1)
+            print("outputs shape: ", outputs.shape)
+            logits = self.classifier(outputs)
+        else:
+            outputs = outputs.reshape(B, -1)
+            print("outputs shape: ", outputs.shape) # [3, 7734272]
+
+            logits = self.classifier(outputs)
+        print("logits shape", logits.shape)
 
         res = dict()
         res['simlarity_loss'] = simlarity_loss

@@ -10,6 +10,7 @@ from sklearn.preprocessing import StandardScaler
 from utils.timefeatures import time_features
 from data_provider.m4 import M4Dataset, M4Meta
 from data_provider.uea import subsample, interpolate_missing, Normalizer
+from data_provider.utils import get_data
 import warnings
 
 warnings.filterwarnings('ignore')
@@ -805,3 +806,18 @@ class Dataset_ECG(Dataset):
 
     def __len__(self):
         return len(self.x_data)
+
+class Dataset_P12(Dataset):
+    def __init__(self, args=None, root_path=None, dataset='P12', device=torch.device("cpu"), q=0.016, upsampling_batch=False):
+        self.data_objects = get_data(args, dataset, device, q, upsampling_batch)
+        self.class_names = ["survival", "death"]
+
+class Dataset_MIMIC(Dataset):
+    def __init__(self, args=None, root_path=None, dataset='MIMIC', device=torch.device("cpu"), q=0.016, upsampling_batch=False):
+        self.data_objects = get_data(args, dataset, device, q, upsampling_batch)
+        self.class_names = [0, 1]
+
+class Dataset_activity(Dataset):
+    def __init__(self, args=None, root_path=None, dataset='activity', device=torch.device("cpu"), q=0.016, upsampling_batch=False):
+        self.data_objects = get_data(args, dataset, device, q, upsampling_batch)
+        self.class_names = [0, 1, 2, 3, 4, 5, 6]

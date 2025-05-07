@@ -2,6 +2,8 @@ from data_provider.data_factory import data_provider
 from exp.exp_basic import Exp_Basic
 from utils.tools import EarlyStopping, adjust_learning_rate, cal_accuracy
 from utils.cmLoss import cmLoss
+# from utils.cmLoss_CLIP import cmLoss as clip_cmLoss
+# from utils.cmLoss_token_wise_CLIP import cmLoss as clip_cmLoss
 import torch
 import torch.nn as nn
 from torch import optim
@@ -118,6 +120,14 @@ class Exp_IR_Classification(Exp_Basic):
                            self.args.feature_w,
                            self.args.output_w,
                            self.args.task_w)
+        # criterion = clip_cmLoss(self.args.feature_loss,
+        #                    self.args.output_loss,
+        #                    self.args.task_loss,
+        #                    self.args.task_name,
+        #                    self.args.feature_w,
+        #                    self.args.output_w,
+        #                    self.args.task_w,
+        #                    temperature=0.07)
         return criterion
 
     def _select_vali_criterion(self):

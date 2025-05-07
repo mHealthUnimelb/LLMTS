@@ -380,7 +380,8 @@ if args.is_training:
         # criterion = nn.CrossEntropyLoss()
         # # mae_metric = nn.L1Loss()
         # metric = "accuracy"
-        test(args, model, setting)
+        test(args, accelerator, model, setting)
+
 else:
     ii = 0
     setting = '{}_{}_{}_{}_ft{}_sl{}_ll{}_pl{}_dm{}_nh{}_el{}_dl{}_df{}_fc{}_eb{}_{}_nc{}_{}'.format(
@@ -458,4 +459,5 @@ else:
     else:
         model = TimeLLM.Model(args).float()
 
-    test(args, model, setting)
+    test(args, accelerator, model, setting)
+    # test(args, model, setting)

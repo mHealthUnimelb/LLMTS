@@ -1,4 +1,5 @@
 # first encode, then patching, add variable-wise attention
+# without LSTM, reshape (batch_size, num_patches, patch_len, dim) to (batch_size * num_patches, patch_len, dim)
 import torch
 import torch.nn as nn
 import torch.nn.functional as F

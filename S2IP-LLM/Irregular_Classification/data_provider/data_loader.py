@@ -621,13 +621,19 @@ class Dataset_Custom(Dataset):
 
 
 class Dataset_P12(Dataset):
-    def __init__(self, args=None, root_path=None, dataset='P12', device=torch.device("cpu"), upsampling_batch=True):
-        self.data_objects = get_data(args, dataset, device, upsampling_batch)
+    def __init__(self, args=None, root_path=None, dataset='P12', device=torch.device("cpu"), q=0.016, upsampling_batch=True):
+        self.data_objects = get_data(args, dataset, device, q, upsampling_batch)
         self.class_names = ["survival", "death"]
 
 
+class Dataset_MIMIC(Dataset):
+    def __init__(self, args=None, root_path=None, dataset='MIMIC', device=torch.device("cpu"), q=0.016, upsampling_batch=False):
+        self.data_objects = get_data(args, dataset, device, q, upsampling_batch)
+        self.class_names = [0, 1]
 
-
-
+class Dataset_activity(Dataset):
+    def __init__(self, args=None, root_path=None, dataset='activity', device=torch.device("cpu"), q=0.016, upsampling_batch=False):
+        self.data_objects = get_data(args, dataset, device, q, upsampling_batch)
+        self.class_names = [0, 1, 2, 3, 4, 5, 6]
 
 

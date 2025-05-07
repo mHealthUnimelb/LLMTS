@@ -570,7 +570,7 @@ class Dataset_Physionet(Dataset):
         print("time steps: ", self.time_steps)
 
 class Dataset_P12(Dataset):
-    def __init__(self, args=None, root_path=None, dataset='P12', device=torch.device("cpu"), q=0, upsampling_batch=True,
+    def __init__(self, args=None, root_path=None, dataset='P12', device=torch.device("cpu"), q=0.016, upsampling_batch=False,
                  split_type='random'):
         self.data_objects = data_provider.utils.get_data(args, dataset, device, q, upsampling_batch, args.split_type)
         self.class_names = ["survival", "death"]

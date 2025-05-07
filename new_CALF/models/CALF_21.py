@@ -1,5 +1,6 @@
 # first encode, then patching, add variable-wise attention
 # use linear mapping to reduce vocab_size
+# multi-patch, stride
 import torch
 import torch.nn as nn
 import torch.nn.functional as F

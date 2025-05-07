@@ -157,51 +157,128 @@ def del_files(dir_path):
     shutil.rmtree(dir_path)
 
 
-def vali(args, accelerator, model, input_dim, vali_loader, criterion, metric):
-    dim = input_dim
+# def vali(args, accelerator, model, input_dim, vali_loader, criterion, metric):
+#     dim = input_dim
+#     total_loss = []
+#     all_logits = []
+#     trues = []
+#     preds = []
+#     # auprc_metric = MulticlassAveragePrecision(num_classes=args.num_classes, average="macro")
+#     # total_mae_loss = []
+
+#     model.eval()
+#     with torch.no_grad():
+#         for i, (batch_x, batch_y) in tqdm(enumerate(vali_loader)):
+#             # observed_data, observed_mask, observed_tp = batch_x[:, :, :dim], batch_x[:, :, dim:2 * dim], batch_x[:, :, -1]
+
+#             batch_x = batch_x.float().to(accelerator.device)
+#             batch_y = batch_y.squeeze().long().to(accelerator.device)
+
+#             print("batch data memory allocated in vali:", torch.cuda.memory_allocated() / (1024 ** 3))
+#             print("batch data memory reserved in vali:", torch.cuda.memory_reserved() / (1024 ** 3))
+#             # encoder - decoder
+#             if args.use_amp:
+#                 with torch.cuda.amp.autocast():
+#                     if args.output_attention:
+#                         outputs = model(batch_x, x_mark_enc=None, x_dec=None, x_mark_dec=None)[0]["aligned_logits"]
+#                         # outputs = model(batch_x, observed_mask, x_mark_enc=None, x_dec=None, x_mark_dec=None)[0]
+#                     else:
+#                         outputs = model(batch_x, x_mark_enc=None, x_dec=None, x_mark_dec=None)["aligned_logits"]
+#                         # outputs = model(batch_x, observed_mask, x_mark_enc=None, x_dec=None, x_mark_dec=None)
+#             else:
+#                 if args.output_attention:
+#                     outputs = model(batch_x, x_mark_enc=None, x_dec=None, x_mark_dec=None)[0]["aligned_logits"]
+#                     # outputs = model(batch_x, observed_mask, x_mark_enc=None, x_dec=None, x_mark_dec=None)[0]
+#                 else:
+#                     outputs = model(batch_x, x_mark_enc=None, x_dec=None, x_mark_dec=None)["aligned_logits"]
+#                     # outputs = model(batch_x, observed_mask, x_mark_enc=None, x_dec=None, x_mark_dec=None)
+#                 # outputs = outputs.to(torch.float32)
+#             print("model output memory allocated in vali:", torch.cuda.memory_allocated() / (1024 ** 3))
+#             print("model output memory reserved in vali:", torch.cuda.memory_reserved() / (1024 ** 3))
+
+#             print(f"outputs shape: {outputs.shape}, dtype: {outputs.dtype}")
+#             print(f"batch_y shape: {batch_y.shape}, dtype: {batch_y.dtype}")
+
+#             outputs, batch_y = accelerator.gather_for_metrics((outputs, batch_y))
+#             print("gather outputs and y memory allocated in vali:", torch.cuda.memory_allocated() / (1024 ** 3))
+#             print("gather outputs and y memory reserved in vali:", torch.cuda.memory_reserved() / (1024 ** 3))
+#             # outputs = accelerator.gather_for_metrics(outputs)
+#             # batch_y = accelerator.gather_for_metrics(batch_y)
+
+#             # f_dim = -1 if args.features == 'MS' else 0
+#             # outputs = outputs[:, -args.pred_len:, f_dim:]
+#             # batch_y = batch_y[:, -args.pred_len:, f_dim:].to(accelerator.device)
+
+#             print(f"outputs shape: {outputs.shape}, type: {outputs.dtype}")
+#             loss = criterion(outputs, batch_y)
+#             total_loss.append(loss.item())
+
+#             # prob = torch.nn.functional.softmax(outputs.detach())
+#             # pred = torch.argmax(prob, dim=1)
+#             # true = batch_y.detach()
+
+#             all_logits.append(outputs.detach())
+#             trues.append(batch_y.detach())
+
+#             # mae_loss = mae_metric(pred, true)
+#     total_loss = np.average(total_loss)
+
+#     all_logits = torch.cat(all_logits, 0)
+#     trues = torch.cat(trues, 0)
+#     probs = torch.nn.functional.softmax(all_logits)
+#     # auprc = auprc_metric(args.num_classes, probs, trues)
+#     # auprc = auprc_metric(probs, trues)
+#     predictions = torch.argmax(probs, dim=1).cpu().numpy()
+#     trues = trues.flatten().cpu().numpy()
+#     auc = roc_auc_score(trues, probs.cpu().float().numpy()[:, 1]) if not args.classify_pertp else 0.
+#     auprc = average_precision_score(trues, probs.cpu().float().numpy()[:, 1]) if not args.classify_pertp else 0.
+
+#     if metric == "accuracy":
+#         accuracy = cal_accuracy(predictions, trues)
+
+
+#     # total_mae_loss = np.average(total_mae_loss)
+
+#     model.train()
+#     # return total_loss, total_mae_loss
+#     return total_loss, accuracy, auc, auprc
+
+
+def vali(args, accelerator, model, vali_data, vali_loader, criterion, metric):
     total_loss = []
     all_logits = []
     trues = []
     preds = []
-    # auprc_metric = MulticlassAveragePrecision(num_classes=args.num_classes, average="macro")
+    auprc_metric = MulticlassAveragePrecision(num_classes=args.num_classes, average="macro")
     # total_mae_loss = []
 
     model.eval()
     with torch.no_grad():
         for i, (batch_x, batch_y) in tqdm(enumerate(vali_loader)):
-            # observed_data, observed_mask, observed_tp = batch_x[:, :, :dim], batch_x[:, :, dim:2 * dim], batch_x[:, :, -1]
-
             batch_x = batch_x.float().to(accelerator.device)
             batch_y = batch_y.squeeze().long().to(accelerator.device)
 
-            print("batch data memory allocated in vali:", torch.cuda.memory_allocated() / (1024 ** 3))
-            print("batch data memory reserved in vali:", torch.cuda.memory_reserved() / (1024 ** 3))
             # encoder - decoder
             if args.use_amp:
                 with torch.cuda.amp.autocast():
                     if args.output_attention:
                         # outputs = model(batch_x, x_mark_enc=None, x_dec=None, x_mark_dec=None)[0]["aligned_logits"]
-                        outputs = model(batch_x, observed_mask, x_mark_enc=None, x_dec=None, x_mark_dec=None)[0]
+                        outputs = model(batch_x, x_mark_enc=None, x_dec=None, x_mark_dec=None)[0]
                     else:
                         # outputs = model(batch_x, x_mark_enc=None, x_dec=None, x_mark_dec=None)["aligned_logits"]
-                        outputs = model(batch_x, observed_mask, x_mark_enc=None, x_dec=None, x_mark_dec=None)
+                        outputs = model(batch_x, x_mark_enc=None, x_dec=None, x_mark_dec=None)
             else:
                 if args.output_attention:
                     # outputs = model(batch_x, x_mark_enc=None, x_dec=None, x_mark_dec=None)[0]["aligned_logits"]
-                    outputs = model(batch_x, observed_mask, x_mark_enc=None, x_dec=None, x_mark_dec=None)[0]
+                    outputs = model(batch_x, x_mark_enc=None, x_dec=None, x_mark_dec=None)[0]
                 else:
                     # outputs = model(batch_x, x_mark_enc=None, x_dec=None, x_mark_dec=None)["aligned_logits"]
-                    outputs = model(batch_x, observed_mask, x_mark_enc=None, x_dec=None, x_mark_dec=None)
+                    outputs = model(batch_x, x_mark_enc=None, x_dec=None, x_mark_dec=None)
                 # outputs = outputs.to(torch.float32)
-            print("model output memory allocated in vali:", torch.cuda.memory_allocated() / (1024 ** 3))
-            print("model output memory reserved in vali:", torch.cuda.memory_reserved() / (1024 ** 3))
 
             print(f"outputs shape: {outputs.shape}, dtype: {outputs.dtype}")
             print(f"batch_y shape: {batch_y.shape}, dtype: {batch_y.dtype}")
-
             outputs, batch_y = accelerator.gather_for_metrics((outputs, batch_y))
-            print("gather outputs and y memory allocated in vali:", torch.cuda.memory_allocated() / (1024 ** 3))
-            print("gather outputs and y memory reserved in vali:", torch.cuda.memory_reserved() / (1024 ** 3))
             # outputs = accelerator.gather_for_metrics(outputs)
             # batch_y = accelerator.gather_for_metrics(batch_y)
 
@@ -227,11 +304,9 @@ def vali(args, accelerator, model, input_dim, vali_loader, criterion, metric):
     trues = torch.cat(trues, 0)
     probs = torch.nn.functional.softmax(all_logits)
     # auprc = auprc_metric(args.num_classes, probs, trues)
-    # auprc = auprc_metric(probs, trues)
+    auprc = auprc_metric(probs, trues)
     predictions = torch.argmax(probs, dim=1).cpu().numpy()
     trues = trues.flatten().cpu().numpy()
-    auc = roc_auc_score(trues, probs.cpu().float().numpy()[:, 1]) if not args.classify_pertp else 0.
-    auprc = average_precision_score(trues, probs.cpu().float().numpy()[:, 1]) if not args.classify_pertp else 0.
 
     if metric == "accuracy":
         accuracy = cal_accuracy(predictions, trues)
@@ -241,7 +316,7 @@ def vali(args, accelerator, model, input_dim, vali_loader, criterion, metric):
 
     model.train()
     # return total_loss, total_mae_loss
-    return total_loss, accuracy, auc, auprc
+    return total_loss, accuracy, auprc
 
 
 # def test(args, accelerator, model, test_loader, criterion, metric, setting, test=0):
@@ -429,7 +504,225 @@ def vali(args, accelerator, model, input_dim, vali_loader, criterion, metric):
 #     return
 
 
-def test(args, accelerator, model, test_loader, input_dim, setting):
+# def test(args, accelerator, model, test_loader, input_dim, setting):
+#     # test_data, test_loader = data_provider(args, 'test')
+#     # test_loader, model = accelerator.prepare(test_loader, model)
+#     # if test:
+#     #     print("loading model")
+#     #     print(setting)
+#     #     model = accelerator.unwrap_model(model)
+#     #     model.load_state_dict(torch.load(os.path.join('./checkpoints/' + setting + '-' + args.model_comment, 'checkpoint')))
+#     #     # accelerator.load_state(os.path.join('./checkpoints/' + setting + '-' + args.model_comment, 'checkpoint'))
+
+#     dim = input_dim
+#     print("loading model")
+#     # print(setting)
+#     best_model_path = './checkpoints/' + setting + '-' + args.model_comment + '/checkpoint'
+#     print("best_model_path", best_model_path)
+#     # if accelerator.state.distributed_type != DistributedType.NO:
+#     #     accelerator.wait_for_everyone()
+#     unwrapped_model = accelerator.unwrap_model(model)
+#     torch.cuda.synchronize()
+#     torch.cuda.empty_cache()
+#     unwrapped_model.load_state_dict(torch.load(best_model_path, map_location=lambda storage, loc: storage))
+#     unwrapped_model = unwrapped_model.bfloat16()
+#     unwrapped_model.to(accelerator.device)
+
+#     total_loss = []
+#     all_logits = []
+#     trues = []
+#     preds = []
+#     # auprc_metric = MulticlassAveragePrecision(num_classes=args.num_classes, average="macro")
+#     # total_mae_loss = []
+
+#     unwrapped_model.eval()
+#     with torch.no_grad():
+#         for i, (batch_x, batch_y) in tqdm(enumerate(test_loader)):
+#             observed_data, observed_mask, observed_tp = batch_x[:, :, :dim], batch_x[:, :, dim:2 * dim], batch_x[:, :, -1]
+
+#             batch_x = observed_data.float().to(accelerator.device)
+#             batch_y = batch_y.squeeze().long().to(accelerator.device)
+
+#             # encoder - decoder
+#             if args.use_amp:
+#                 with torch.cuda.amp.autocast():
+#                     if args.output_attention:
+#                         # outputs = model(batch_x, x_mark_enc=None, x_dec=None, x_mark_dec=None)[0]["aligned_logits"]
+#                         outputs = unwrapped_model(batch_x, observed_mask, x_mark_enc=None, x_dec=None, x_mark_dec=None)[0]
+#                     else:
+#                         # outputs = model(batch_x, x_mark_enc=None, x_dec=None, x_mark_dec=None)["aligned_logits"]
+#                         outputs = unwrapped_model(batch_x, observed_mask, x_mark_enc=None, x_dec=None, x_mark_dec=None)
+#             else:
+#                 if args.output_attention:
+#                     # outputs = model(batch_x, x_mark_enc=None, x_dec=None, x_mark_dec=None)[0]["aligned_logits"]
+#                     outputs = unwrapped_model(batch_x, observed_mask, x_mark_enc=None, x_dec=None, x_mark_dec=None)[0]
+#                 else:
+#                     # outputs = model(batch_x, x_mark_enc=None, x_dec=None, x_mark_dec=None)["aligned_logits"]
+#                     outputs = unwrapped_model(batch_x, observed_mask, x_mark_enc=None, x_dec=None, x_mark_dec=None)
+#                 # outputs = outputs.to(torch.float32)
+
+#             print(f"outputs shape: {outputs.shape}, dtype: {outputs.dtype}")
+#             print(f"batch_y shape: {batch_y.shape}, dtype: {batch_y.dtype}")
+#             # outputs = accelerator.gather_for_metrics(outputs)
+#             # batch_y = accelerator.gather_for_metrics(batch_y)
+
+#             # f_dim = -1 if args.features == 'MS' else 0
+#             # outputs = outputs[:, -args.pred_len:, f_dim:]
+#             # batch_y = batch_y[:, -args.pred_len:, f_dim:].to(accelerator.device)
+
+#             print(f"outputs shape: {outputs.shape}, type: {outputs.dtype}")
+#             # loss = criterion(outputs, batch_y)
+#             # total_loss.append(loss.item())
+
+#             # prob = torch.nn.functional.softmax(outputs.detach())
+#             # pred = torch.argmax(prob, dim=1)
+#             # true = batch_y.detach()
+
+#             all_logits.append(outputs.detach())
+#             trues.append(batch_y.detach())
+
+#             # mae_loss = mae_metric(pred, true)
+#     # total_loss = np.average(total_loss)
+
+#     all_logits = torch.cat(all_logits, 0)
+#     trues = torch.cat(trues, 0)
+#     probs = torch.nn.functional.softmax(all_logits)
+#     # auprc = auprc_metric(args.num_classes, probs, trues)
+#     # auprc = auprc_metric(probs, trues)
+#     predictions = torch.argmax(probs, dim=1).cpu().numpy()
+#     trues = trues.flatten().cpu().numpy()
+#     auc = roc_auc_score(trues, probs.cpu().float().numpy()[:, 1]) if not args.classify_pertp else 0.
+#     auprc = average_precision_score(trues, probs.cpu().float().numpy()[:, 1]) if not args.classify_pertp else 0.
+#     accuracy = cal_accuracy(predictions, trues)
+
+
+#     # total_mae_loss = np.average(total_mae_loss)
+#     if accelerator.is_local_main_process:
+#         # return total_loss, total_mae_loss
+#         print("Test Acc: {0:.7f} Test AUROC: {1:.7f} Test AUPRC: {2:.7f}".format(accuracy, auc, auprc))
+
+#         # resuqlt save
+#         folder_path = './results/' + setting + '/'
+#         if not os.path.exists(folder_path):
+#             os.makedirs(folder_path)
+
+#         # Compute Confusion Matrix
+#         cm = confusion_matrix(trues, predictions)
+#         # disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=list(range(self.args.num_class)))
+#         disp = ConfusionMatrixDisplay(confusion_matrix=cm)
+#         disp.plot()
+#         plt.title(f'Confusion Matrix')
+#         plt.savefig(f'./results/{setting}/confusion_matrix.png')
+#         plt.close()
+
+#     return
+
+# def test(args, model, setting, test=0):
+#     # test_data, test_loader = data_provider(args, 'test')
+#     # test_loader, model = accelerator.prepare(test_loader, model)
+#     # if test:
+#     #     print("loading model")
+#     #     print(setting)
+#     #     model = accelerator.unwrap_model(model)
+#     #     model.load_state_dict(torch.load(os.path.join('./checkpoints/' + setting + '-' + args.model_comment, 'checkpoint')))
+#     #     # accelerator.load_state(os.path.join('./checkpoints/' + setting + '-' + args.model_comment, 'checkpoint'))
+
+#     test_data, test_loader = data_provider(args, 'test')
+#     print("loading model")
+#     print(setting)
+#     model.load_state_dict(torch.load(os.path.join('./checkpoints/' + setting + '-' + args.model_comment, 'checkpoint'), map_location=torch.device('cuda:0')))
+#     print(setting)
+#     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+#     model.to(device)
+#     model = model.to(torch.bfloat16)
+
+#     total_loss = []
+#     all_logits = []
+#     trues = []
+#     preds = []
+#     auprc_metric = MulticlassAveragePrecision(num_classes=args.num_classes, average="macro")
+#     # total_mae_loss = []
+
+#     model.eval()
+#     with torch.no_grad():
+#         for i, (batch_x, batch_y) in tqdm(enumerate(test_loader)):
+#             batch_x = batch_x.float().to(device)
+#             batch_y = batch_y.squeeze().long().to(device)
+
+#             # encoder - decoder
+#             if args.use_amp:
+#                 with torch.cuda.amp.autocast():
+#                     if args.output_attention:
+#                         # outputs = model(batch_x, x_mark_enc=None, x_dec=None, x_mark_dec=None)[0]["aligned_logits"]
+#                         outputs = model(batch_x, x_mark_enc=None, x_dec=None, x_mark_dec=None)[0]
+#                     else:
+#                         # outputs = model(batch_x, x_mark_enc=None, x_dec=None, x_mark_dec=None)["aligned_logits"]
+#                         outputs = model(batch_x, x_mark_enc=None, x_dec=None, x_mark_dec=None)
+#             else:
+#                 if args.output_attention:
+#                     # outputs = model(batch_x, x_mark_enc=None, x_dec=None, x_mark_dec=None)[0]["aligned_logits"]
+#                     outputs = model(batch_x, x_mark_enc=None, x_dec=None, x_mark_dec=None)[0]
+#                 else:
+#                     # outputs = model(batch_x, x_mark_enc=None, x_dec=None, x_mark_dec=None)["aligned_logits"]
+#                     outputs = model(batch_x, x_mark_enc=None, x_dec=None, x_mark_dec=None)
+#                 # outputs = outputs.to(torch.float32)
+
+#             print(f"outputs shape: {outputs.shape}, dtype: {outputs.dtype}")
+#             print(f"batch_y shape: {batch_y.shape}, dtype: {batch_y.dtype}")
+#             # outputs = accelerator.gather_for_metrics(outputs)
+#             # batch_y = accelerator.gather_for_metrics(batch_y)
+
+#             # f_dim = -1 if args.features == 'MS' else 0
+#             # outputs = outputs[:, -args.pred_len:, f_dim:]
+#             # batch_y = batch_y[:, -args.pred_len:, f_dim:].to(accelerator.device)
+
+#             print(f"outputs shape: {outputs.shape}, type: {outputs.dtype}")
+#             # loss = criterion(outputs, batch_y)
+#             # total_loss.append(loss.item())
+
+#             # prob = torch.nn.functional.softmax(outputs.detach())
+#             # pred = torch.argmax(prob, dim=1)
+#             # true = batch_y.detach()
+
+#             all_logits.append(outputs.detach())
+#             trues.append(batch_y.detach())
+
+#             # mae_loss = mae_metric(pred, true)
+#     # total_loss = np.average(total_loss)
+
+#     all_logits = torch.cat(all_logits, 0)
+#     trues = torch.cat(trues, 0)
+#     probs = torch.nn.functional.softmax(all_logits)
+#     # auprc = auprc_metric(args.num_classes, probs, trues)
+#     auprc = auprc_metric(probs, trues)
+#     predictions = torch.argmax(probs, dim=1).cpu().numpy()
+#     trues = trues.flatten().cpu().numpy()
+
+#     accuracy = cal_accuracy(predictions, trues)
+
+
+#     # total_mae_loss = np.average(total_mae_loss)
+
+#     # return total_loss, total_mae_loss
+#     print("Test Acc: {0:.7f} Test AUPRC: {1:.7f}".format(accuracy, auprc))
+
+#     # result save
+#     folder_path = './results/' + setting + '/'
+#     if not os.path.exists(folder_path):
+#         os.makedirs(folder_path)
+
+#     # Compute Confusion Matrix
+#     cm = confusion_matrix(trues, predictions)
+#     # disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=list(range(self.args.num_class)))
+#     disp = ConfusionMatrixDisplay(confusion_matrix=cm)
+#     disp.plot()
+#     plt.title(f'Confusion Matrix')
+#     plt.savefig(f'./results/{setting}/confusion_matrix.png')
+#     plt.close()
+
+#     return
+
+def test(args, accelerator, model, setting, test=0):
     # test_data, test_loader = data_provider(args, 'test')
     # test_loader, model = accelerator.prepare(test_loader, model)
     # if test:
@@ -439,13 +732,10 @@ def test(args, accelerator, model, test_loader, input_dim, setting):
     #     model.load_state_dict(torch.load(os.path.join('./checkpoints/' + setting + '-' + args.model_comment, 'checkpoint')))
     #     # accelerator.load_state(os.path.join('./checkpoints/' + setting + '-' + args.model_comment, 'checkpoint'))
 
-    dim = input_dim
+    test_data, test_loader = data_provider(args, 'test')
     print("loading model")
-    # print(setting)
     best_model_path = './checkpoints/' + setting + '-' + args.model_comment + '/checkpoint'
-    print("best_model_path", best_model_path)
-    # if accelerator.state.distributed_type != DistributedType.NO:
-    #     accelerator.wait_for_everyone()
+
     unwrapped_model = accelerator.unwrap_model(model)
     torch.cuda.synchronize()
     torch.cuda.empty_cache()
@@ -457,15 +747,13 @@ def test(args, accelerator, model, test_loader, input_dim, setting):
     all_logits = []
     trues = []
     preds = []
-    # auprc_metric = MulticlassAveragePrecision(num_classes=args.num_classes, average="macro")
+    auprc_metric = MulticlassAveragePrecision(num_classes=args.num_classes, average="macro")
     # total_mae_loss = []
 
     unwrapped_model.eval()
     with torch.no_grad():
         for i, (batch_x, batch_y) in tqdm(enumerate(test_loader)):
-            observed_data, observed_mask, observed_tp = batch_x[:, :, :dim], batch_x[:, :, dim:2 * dim], batch_x[:, :, -1]
-
-            batch_x = observed_data.float().to(accelerator.device)
+            batch_x = batch_x.float().to(accelerator.device)
             batch_y = batch_y.squeeze().long().to(accelerator.device)
 
             # encoder - decoder
@@ -473,17 +761,17 @@ def test(args, accelerator, model, test_loader, input_dim, setting):
                 with torch.cuda.amp.autocast():
                     if args.output_attention:
                         # outputs = model(batch_x, x_mark_enc=None, x_dec=None, x_mark_dec=None)[0]["aligned_logits"]
-                        outputs = unwrapped_model(batch_x, observed_mask, x_mark_enc=None, x_dec=None, x_mark_dec=None)[0]
+                        outputs = unwrapped_model(batch_x, x_mark_enc=None, x_dec=None, x_mark_dec=None)[0]
                     else:
                         # outputs = model(batch_x, x_mark_enc=None, x_dec=None, x_mark_dec=None)["aligned_logits"]
-                        outputs = unwrapped_model(batch_x, observed_mask, x_mark_enc=None, x_dec=None, x_mark_dec=None)
+                        outputs = unwrapped_model(batch_x, x_mark_enc=None, x_dec=None, x_mark_dec=None)
             else:
                 if args.output_attention:
                     # outputs = model(batch_x, x_mark_enc=None, x_dec=None, x_mark_dec=None)[0]["aligned_logits"]
-                    outputs = unwrapped_model(batch_x, observed_mask, x_mark_enc=None, x_dec=None, x_mark_dec=None)[0]
+                    outputs = unwrapped_model(batch_x, x_mark_enc=None, x_dec=None, x_mark_dec=None)[0]
                 else:
                     # outputs = model(batch_x, x_mark_enc=None, x_dec=None, x_mark_dec=None)["aligned_logits"]
-                    outputs = unwrapped_model(batch_x, observed_mask, x_mark_enc=None, x_dec=None, x_mark_dec=None)
+                    outputs = unwrapped_model(batch_x, x_mark_enc=None, x_dec=None, x_mark_dec=None)
                 # outputs = outputs.to(torch.float32)
 
             print(f"outputs shape: {outputs.shape}, dtype: {outputs.dtype}")
@@ -513,20 +801,18 @@ def test(args, accelerator, model, test_loader, input_dim, setting):
     trues = torch.cat(trues, 0)
     probs = torch.nn.functional.softmax(all_logits)
     # auprc = auprc_metric(args.num_classes, probs, trues)
-    # auprc = auprc_metric(probs, trues)
+    auprc = auprc_metric(probs, trues)
     predictions = torch.argmax(probs, dim=1).cpu().numpy()
     trues = trues.flatten().cpu().numpy()
-    auc = roc_auc_score(trues, probs.cpu().float().numpy()[:, 1]) if not args.classify_pertp else 0.
-    auprc = average_precision_score(trues, probs.cpu().float().numpy()[:, 1]) if not args.classify_pertp else 0.
+
     accuracy = cal_accuracy(predictions, trues)
 
-
-    # total_mae_loss = np.average(total_mae_loss)
     if accelerator.is_local_main_process:
+        # total_mae_loss = np.average(total_mae_loss)
         # return total_loss, total_mae_loss
-        print("Test Acc: {0:.7f} Test AUROC: {1:.7f} Test AUPRC: {2:.7f}".format(accuracy, auc, auprc))
+        print("Test Acc: {0:.7f} Test AUPRC: {1:.7f}".format(accuracy, auprc))
 
-        # resuqlt save
+        # result save
         folder_path = './results/' + setting + '/'
         if not os.path.exists(folder_path):
             os.makedirs(folder_path)

@@ -6,7 +6,7 @@ import random
 from itertools import chain
 import os
 from datasets import load_dataset
-from datasets import load_metric
+# from datasets import load_metric
 from datasets import Dataset, Image
 
 def load_image(Pdict_list, y, base_path, split_idx, dataset_prefix, missing_ratio):

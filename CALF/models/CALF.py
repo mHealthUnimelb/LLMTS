@@ -50,6 +50,7 @@ class Encoder_PCA(nn.Module):
 class Model(nn.Module):
     def __init__(self, configs, device):
         super(Model, self).__init__()
+        self.configs = configs
         self.pred_len = configs.pred_len
 
         peft_config = LoraConfig(
@@ -70,7 +71,7 @@ class Model(nn.Module):
 
         self.gpt2.h = self.gpt2.h[:configs.gpt_layers]
         self.gpt2_text.h = self.gpt2_text.h[:configs.gpt_layers]
-        # self.gpt2 = get_peft_model(self.gpt2, peft_config)
+        self.gpt2 = get_peft_model(self.gpt2, peft_config)
 
         word_embedding = torch.tensor(torch.load(configs.word_embedding_path)).to(device=device)
         print("word_embedding_path: ", configs.word_embedding_path)
@@ -95,10 +96,16 @@ class Model(nn.Module):
 
         self.in_layer = Encoder_PCA(configs.seq_len, word_embedding, hidden_dim=configs.d_model)
 
+        if configs.classify_pertp:
+            self.projection_layer = nn.Linear(configs.d_model, configs.seq_len)
+
         if self.task_name == 'long_term_forecast' or self.task_name == 'short_term_forecast':
             self.out_layer = nn.Linear(configs.d_model, configs.pred_len)
         elif self.task_name == 'classification':
-            self.out_layer = nn.Linear(configs.d_model * configs.enc_in, configs.num_class)
+            if configs.classify_pertp:
+                self.out_layer = nn.Linear(configs.enc_in, configs.num_class)
+            else:
+                self.out_layer = nn.Linear(configs.d_model * configs.enc_in, configs.num_class)
         elif self.task_name == 'imputation':
             self.out_layer = nn.Linear(configs.d_model, configs.seq_len)
         elif self.task_name == 'anomaly_detection':
@@ -175,6 +182,14 @@ class Model(nn.Module):
 
         print("outputs_time shape: ", outputs_time.shape) # (128, 2, 768)
         print("outputs_text shape: ", outputs_text.shape) # (128, 2, 768)
+
+        # if self.configs.classify_pertp:
+        #     outputs_time = self.projection_layer(outputs_time) # (batch, channel, seq_len)
+        #     outputs_text = self.projection_layer(outputs_text)
+
+        #     outputs_time = outputs_time.permute(0, 2, 1) # (batch, seq_len, channel)
+        #     outputs_text = outputs_text.permute(0, 2, 1)
+        # else:
         outputs_time = outputs_time.reshape(B, -1)
         outputs_text = outputs_text.reshape(B, -1)
 

@@ -1,6 +1,6 @@
 model_name=TimeLLM_5
 train_epochs=100
-learning_rate=0.00000001
+learning_rate=0.0001
 llama_layers=6
 
 master_port=2047

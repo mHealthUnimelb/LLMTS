@@ -1,6 +1,7 @@
 import sys
-sys.path.insert(0, '/mnt/raid0/zekun/ViTST/code')
+sys.path.insert(0, '/data/gpfs/projects/punim2341/feixiangz/ViTST/code')
 import os
+os.environ["WANDB_DISABLED"] = "true"
 
 import imp
 import argparse
@@ -31,8 +32,9 @@ from transformers import (
     BertTokenizer
 )
 
+import evaluate
 from datasets import load_dataset
-from datasets import load_metric
+# from datasets import load_metric
 from datasets import Dataset, Image
 
 from load_data import get_data_split 
@@ -137,13 +139,13 @@ def fine_tune_hf(
         """Computes accuracy on a batch of predictions"""
         predictions, labels = eval_pred
 
-        metric = load_metric("accuracy")
+        metric = evaluate.load("accuracy")
         accuracy = metric.compute(predictions=np.argmax(predictions, axis=1), references=labels)["accuracy"]
-        metric = load_metric("precision")
+        metric = evaluate.load("precision")
         precision = metric.compute(predictions=np.argmax(predictions, axis=1), references=labels)["precision"]
-        metric = load_metric("recall")
+        metric = evaluate.load("recall")
         recall = metric.compute(predictions=np.argmax(predictions, axis=1), references=labels)["recall"]
-        metric = load_metric("f1")
+        metric = evaluate.load("f1")
         f1 = metric.compute(predictions=np.argmax(predictions, axis=1), references=labels)["f1"]
 
         denoms = np.sum(np.exp(predictions), axis=1).reshape((-1, 1))
@@ -158,13 +160,13 @@ def fine_tune_hf(
         """Computes accuracy on a batch of predictions"""
         predictions, labels = eval_pred
 
-        metric = load_metric("accuracy")
+        metric = evaluate.load("accuracy")
         accuracy = metric.compute(predictions=np.argmax(predictions, axis=1), references=labels)["accuracy"]
-        metric = load_metric("precision")
+        metric = evaluate.load("precision")
         precision = metric.compute(predictions=np.argmax(predictions, axis=1), references=labels, average="macro")["precision"]
-        metric = load_metric("recall")
+        metric = evaluate.load("recall")
         recall = metric.compute(predictions=np.argmax(predictions, axis=1), references=labels, average="macro")["recall"]
-        metric = load_metric("f1")
+        metric = evaluate.load("f1")
         f1 = metric.compute(predictions=np.argmax(predictions, axis=1), references=labels, average="macro")["f1"]
 
         denoms = np.sum(np.exp(predictions), axis=1).reshape((-1, 1))

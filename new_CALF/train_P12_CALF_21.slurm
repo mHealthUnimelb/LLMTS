@@ -13,7 +13,7 @@ module purge
 module load foss/2022a
 module load Anaconda3/2022.10
 eval "$(conda shell.bash hook)"
-conda activate calf
+conda activate faiss
 export CUDA_LAUNCH_BLOCKING=1
 
 seq_len=2500
@@ -27,7 +27,7 @@ python run.py \
     --task_name classification \
     --model_id P12_$model'_'$seq_len'_'$pred_len \
     --data P12 \
-    --data_split_path ./data/P12data/splits/phy12_split1.npy \
+    --data_split_path ./data/P12data/splits/phy12_split3.npy \
     --seq_len $seq_len \
     --label_len 0 \
     --pred_len $pred_len \

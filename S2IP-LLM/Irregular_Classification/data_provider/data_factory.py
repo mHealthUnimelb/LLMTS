@@ -1,5 +1,5 @@
 from data_provider.data_loader import Dataset_ETT_hour, Dataset_ETT_hour_decomposed, Dataset_ETT_minute, \
-    Dataset_ETT_minute_decomposed, Dataset_Custom, Dataset_P12
+    Dataset_ETT_minute_decomposed, Dataset_Custom, Dataset_P12, Dataset_MIMIC, Dataset_activity
 import torch
 from torch.utils.data import DataLoader
 
@@ -16,6 +16,8 @@ data_dict = {
     'traffic': Dataset_Custom,
     'weather': Dataset_Custom,
     'P12': Dataset_P12,
+    'MIMIC': Dataset_MIMIC,
+    'activity': Dataset_activity,
 }
 
 
@@ -70,8 +72,8 @@ def data_provider(args, flag):
         )
         return data_set, data_loader
     elif args.task_name == 'ir_classification':
-        if args.data == 'P12' or args.data == 'P19' or args.data == 'PAM':
-            data_set = Data(args=args, dataset=args.data, device=torch.device("cpu"), upsampling_batch=True)
+        if args.data == 'P12' or args.data == 'P19' or args.data == 'PAM' or args.data == 'MIMIC' or args.data == 'activity':
+            data_set = Data(args=args, dataset=args.data, device=torch.device("cpu"), q=args.quantization, upsampling_batch=False)
             return data_set, None
     else:
         if args.data == 'm4':
