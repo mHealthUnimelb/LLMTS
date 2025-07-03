@@ -39,6 +39,14 @@ def adjust_learning_rate(accelerator, optimizer, scheduler, epoch, args, printou
             else:
                 print('Updating learning rate to {}'.format(lr))
 
+def one_hot(y_):
+    # Function to encode output labels from number indexes
+    # e.g.: [[5], [0], [3]] --> [[0, 0, 0, 0, 0, 1], [1, 0, 0, 0, 0, 0], [0, 0, 0, 1, 0, 0]]
+    y_ = y_.reshape(len(y_))
+
+    y_ = [int(x) for x in y_]
+    n_values = np.max(y_) + 1
+    return np.eye(n_values)[np.array(y_, dtype=np.int32)]
 
 class EarlyStopping:
     def __init__(self, accelerator=None, patience=7, verbose=False, delta=0, save_mode=True):
@@ -249,7 +257,7 @@ def vali(args, accelerator, model, vali_data, vali_loader, criterion, metric):
     all_logits = []
     trues = []
     preds = []
-    auprc_metric = MulticlassAveragePrecision(num_classes=args.num_classes, average="macro")
+    # auprc_metric = MulticlassAveragePrecision(num_classes=args.num_classes, average="macro")
     # total_mae_loss = []
 
     model.eval()
@@ -302,11 +310,13 @@ def vali(args, accelerator, model, vali_data, vali_loader, criterion, metric):
 
     all_logits = torch.cat(all_logits, 0)
     trues = torch.cat(trues, 0)
-    probs = torch.nn.functional.softmax(all_logits)
+    probs = torch.nn.functional.softmax(all_logits).float()
     # auprc = auprc_metric(args.num_classes, probs, trues)
-    auprc = auprc_metric(probs, trues)
+    # auprc = auprc_metric(probs, trues)
+    # auprc = average_precision_score(one_hot(trues), probs.detach().cpu().numpy(), average='macro')
     predictions = torch.argmax(probs, dim=1).cpu().numpy()
     trues = trues.flatten().cpu().numpy()
+    auprc = average_precision_score(one_hot(trues), probs.detach().cpu().numpy(), average='macro')
 
     if metric == "accuracy":
         accuracy = cal_accuracy(predictions, trues)
@@ -747,7 +757,7 @@ def test(args, accelerator, model, setting, test=0):
     all_logits = []
     trues = []
     preds = []
-    auprc_metric = MulticlassAveragePrecision(num_classes=args.num_classes, average="macro")
+    # auprc_metric = MulticlassAveragePrecision(num_classes=args.num_classes, average="macro")
     # total_mae_loss = []
 
     unwrapped_model.eval()
@@ -799,11 +809,12 @@ def test(args, accelerator, model, setting, test=0):
 
     all_logits = torch.cat(all_logits, 0)
     trues = torch.cat(trues, 0)
-    probs = torch.nn.functional.softmax(all_logits)
+    probs = torch.nn.functional.softmax(all_logits).float()
     # auprc = auprc_metric(args.num_classes, probs, trues)
-    auprc = auprc_metric(probs, trues)
+    # auprc = auprc_metric(probs, trues)
     predictions = torch.argmax(probs, dim=1).cpu().numpy()
     trues = trues.flatten().cpu().numpy()
+    auprc = average_precision_score(one_hot(trues), probs.cpu().numpy(), average='macro')
 
     accuracy = cal_accuracy(predictions, trues)
 

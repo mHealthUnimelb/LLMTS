@@ -38,6 +38,14 @@ def get_data_split(base_path, split_path, split_type='random', reverse=False, ba
         Pdict_list = np.load(base_path + '/processed_data/PTdict_list.npy', allow_pickle=True)
         arr_outcomes = np.load(base_path + '/processed_data/arr_outcomes.npy', allow_pickle=True)
         dataset_prefix = ''  # not applicable
+    elif dataset == 'MIMIC':
+        Pdict_list = np.load(base_path + '/processed_data/PTdict_list.npy', allow_pickle=True)
+        arr_outcomes = np.load(base_path + '/processed_data/arr_outcomes.npy', allow_pickle=True)
+        dataset_prefix = ''  # not applicable
+    elif dataset == 'activity':
+        Pdict_list = np.load(base_path + '/processed_data/PTdict_list.npy', allow_pickle=True)
+        arr_outcomes = np.load(base_path + '/processed_data/arr_outcomes.npy', allow_pickle=True)
+        dataset_prefix = ''  # not applicable
 
     show_statistics = False
     if show_statistics:
@@ -139,9 +147,12 @@ def get_data_split(base_path, split_path, split_type='random', reverse=False, ba
             y = np.array(list(map(lambda los: 0 if los <= 3 else 1, y)))[..., np.newaxis]
     elif dataset == 'eICU':
         y = arr_outcomes[..., np.newaxis]
+    elif dataset == 'MIMIC' or dataset == 'activity':
+        y = arr_outcomes
     ytrain = y[idx_train]
     yval = y[idx_val]
     ytest = y[idx_test]
+    print("y train shape", ytrain.shape)
 
     return Ptrain, Pval, Ptest, ytrain, yval, ytest
 
@@ -172,6 +183,21 @@ def mask_normalize(P_tensor, mf, stdf):
     Pf = Pf * M_3D
     Pnorm_tensor = Pf.reshape((F, N, T)).transpose((1, 2, 0))
     Pfinal_tensor = np.concatenate([Pnorm_tensor, M], axis=2)
+    return Pfinal_tensor
+
+def mask_normalize_v2(P_tensor, mf, stdf):
+    # doesn't perform normalize because already normalize
+    N, T, F = P_tensor.shape
+    Pf = P_tensor.transpose((2, 0, 1)).reshape(F, -1)
+    M = 1*(P_tensor > 0) + 0*(P_tensor <= 0)
+    M_3D = M.transpose((2, 0, 1)).reshape(F, -1)
+    # for f in range(F):
+    #     Pf[f] = (Pf[f]-mf[f])/(stdf[f]+1e-18)
+    Pf = Pf * M_3D
+    Pnorm_tensor = Pf.reshape((F, N, T)).transpose((1, 2, 0))
+    print("Pnorm_tensor", Pnorm_tensor)
+    Pfinal_tensor = np.concatenate([Pnorm_tensor, M], axis=2)
+    print("Pfinal_tensor", Pfinal_tensor)
     return Pfinal_tensor
 
 
@@ -240,6 +266,28 @@ def tensorize_normalize(P, y, mf, stdf, ms, ss):
     y_tensor = torch.Tensor(y_tensor[:, 0]).type(torch.LongTensor)
     return P_tensor, P_static_tensor, P_time, y_tensor
 
+def tensorize_normalize_other_v2(P, y, mf, stdf):
+    T, F = P[0]['arr'].shape
+    P_tensor = np.zeros((len(P), T, F))
+    P_time = np.zeros((len(P), T, 1))
+    for i in range(len(P)):
+        P_tensor[i] = P[i]['arr']
+        P_time[i] = P[i]['time']
+    # P_tensor = mask_normalize(P_tensor, mf, stdf)  doesn't perform normalize because already normalize
+    print("P_tensor", P_tensor)
+    print("P_time", P_time)
+    P_tensor = mask_normalize_v2(P_tensor, mf, stdf)
+    P_tensor = torch.Tensor(P_tensor)
+    print("P_tensor", P_tensor)
+
+    # P_time = torch.Tensor(P_time) / 60.0
+    P_time = torch.Tensor(P_time)
+
+    y_tensor = y
+    y_tensor = torch.Tensor(y_tensor[:, 0]).type(torch.LongTensor)
+    print("y_tensor", y_tensor)
+    return P_tensor, None, P_time, y_tensor
+
 
 def tensorize_normalize_other(P, y, mf, stdf):
     T, F = P[0].shape
@@ -256,6 +304,21 @@ def tensorize_normalize_other(P, y, mf, stdf):
     y_tensor = torch.Tensor(y_tensor[:, 0]).type(torch.LongTensor)
     return P_tensor, None, P_time, y_tensor
 
+def tensorize_normalize_activity(P, y, mf, stdf):
+    T, F = P[0].shape
+    P_time = np.zeros((len(P), T, 1))
+    for i in range(len(P)):
+        tim = torch.linspace(0, T, T).reshape(-1, 1)
+        P_time[i] = tim
+    P_tensor = mask_normalize(P, mf, stdf)
+    P_tensor = torch.Tensor(P_tensor)
+
+    P_time = torch.Tensor(P_time) / 60.0
+
+    y_tensor = y
+    y_tensor = torch.Tensor(y_tensor)
+    print("y_tensor shape", y_tensor.shape)
+    return P_tensor, None, P_time, y_tensor
 
 def masked_softmax(A, epsilon=0.000000001):
     A_max = torch.max(A, dim=1, keepdim=True)[0]
@@ -273,7 +336,7 @@ def random_sample(idx_0, idx_1, B, replace=False):
     return idx
 
 
-def evaluate(model, P_tensor, P_time_tensor, P_static_tensor, batch_size=100, n_classes=2, static=1):
+def evaluate(model, P_tensor, P_time_tensor, P_static_tensor, batch_size=100, n_classes=2, static=1, dataset=None):
     model.eval()
     P_tensor = P_tensor.cuda()
     P_time_tensor = P_time_tensor.cuda()
@@ -285,7 +348,10 @@ def evaluate(model, P_tensor, P_time_tensor, P_static_tensor, batch_size=100, n_
 
     T, N, Ff = P_tensor.shape
     n_batches, rem = N // batch_size, N % batch_size
-    out = torch.zeros(N, n_classes)
+    if dataset == 'activity':
+        out = torch.zeros(N, T, n_classes)
+    else:
+        out = torch.zeros(N, n_classes)
     start = 0
     for i in range(n_batches):
         P = P_tensor[:, start:start + batch_size, :]

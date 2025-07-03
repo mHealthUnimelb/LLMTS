@@ -6,7 +6,7 @@ import shutil
 from torchmetrics.classification import MulticlassAveragePrecision
 from tqdm import tqdm
 from sklearn.metrics import confusion_matrix, average_precision_score, ConfusionMatrixDisplay, precision_recall_curve, \
-    auc, roc_auc_score
+    auc, roc_auc_score, precision_score, recall_score
 from data_provider.data_factory import data_provider
 from accelerate.state import DistributedType
 
@@ -181,23 +181,27 @@ def vali(args, accelerator, model, input_dim, vali_loader, criterion, metric):
                 with torch.cuda.amp.autocast():
                     if args.output_attention:
                         # outputs = model(batch_x, x_mark_enc=None, x_dec=None, x_mark_dec=None)[0]["aligned_logits"]
-                        outputs = model(batch_x, observed_mask, x_mark_enc=None, x_dec=None, x_mark_dec=None)[0]
+                        outputs = model(batch_x, x_mark_enc=None, x_dec=None, x_mark_dec=None)[0]
+                        # outputs = model(batch_x, observed_mask, x_mark_enc=None, x_dec=None, x_mark_dec=None)[0]
                     else:
                         # outputs = model(batch_x, x_mark_enc=None, x_dec=None, x_mark_dec=None)["aligned_logits"]
-                        outputs = model(batch_x, observed_mask, x_mark_enc=None, x_dec=None, x_mark_dec=None)
+                        outputs = model(batch_x, x_mark_enc=None, x_dec=None, x_mark_dec=None)
+                        # outputs = model(batch_x, observed_mask, x_mark_enc=None, x_dec=None, x_mark_dec=None)
             else:
                 if args.output_attention:
                     # outputs = model(batch_x, x_mark_enc=None, x_dec=None, x_mark_dec=None)[0]["aligned_logits"]
-                    outputs = model(batch_x, observed_mask, x_mark_enc=None, x_dec=None, x_mark_dec=None)[0]
+                    outputs = model(batch_x, x_mark_enc=None, x_dec=None, x_mark_dec=None)[0]
+                    # outputs = model(batch_x, observed_mask, x_mark_enc=None, x_dec=None, x_mark_dec=None)[0]
                 else:
                     # outputs = model(batch_x, x_mark_enc=None, x_dec=None, x_mark_dec=None)["aligned_logits"]
-                    outputs = model(batch_x, observed_mask, x_mark_enc=None, x_dec=None, x_mark_dec=None)
+                    outputs = model(batch_x, x_mark_enc=None, x_dec=None, x_mark_dec=None)
+                    # outputs = model(batch_x, observed_mask, x_mark_enc=None, x_dec=None, x_mark_dec=None)
                 # outputs = outputs.to(torch.float32)
             print("model output memory allocated in vali:", torch.cuda.memory_allocated() / (1024 ** 3))
             print("model output memory reserved in vali:", torch.cuda.memory_reserved() / (1024 ** 3))
 
             print(f"outputs shape: {outputs.shape}, dtype: {outputs.dtype}")
-            print(f"batch_y shape: {batch_y.shape}, dtype: {batch_y.dtype}")
+            print(f"batch_y shape: {batch_y.shape}, dtype: {batch_y.dtype}")            
 
             outputs, batch_y = accelerator.gather_for_metrics((outputs, batch_y))
             print("gather outputs and y memory allocated in vali:", torch.cuda.memory_allocated() / (1024 ** 3))
@@ -210,6 +214,11 @@ def vali(args, accelerator, model, input_dim, vali_loader, criterion, metric):
             # batch_y = batch_y[:, -args.pred_len:, f_dim:].to(accelerator.device)
 
             print(f"outputs shape: {outputs.shape}, type: {outputs.dtype}")
+
+            if args.classify_pertp:
+                outputs = outputs.reshape(-1, args.num_classes)
+                batch_y = batch_y.argmax(-1).reshape(-1)
+
             loss = criterion(outputs, batch_y)
             total_loss.append(loss.item())
 
@@ -230,19 +239,31 @@ def vali(args, accelerator, model, input_dim, vali_loader, criterion, metric):
     # auprc = auprc_metric(probs, trues)
     predictions = torch.argmax(probs, dim=1).cpu().numpy()
     trues = trues.flatten().cpu().numpy()
-    auc = roc_auc_score(trues, probs.cpu().float().numpy()[:, 1]) if not args.classify_pertp else 0.
-    auprc = average_precision_score(trues, probs.cpu().float().numpy()[:, 1]) if not args.classify_pertp else 0.
 
     if metric == "accuracy":
         accuracy = cal_accuracy(predictions, trues)
 
-
+    if args.data == 'P12' or args.data == 'P19' or args.data == 'eICU' or args.data == 'MIMIC':
+        auc = roc_auc_score(trues, probs.cpu().float().numpy()[:, 1]) if not args.classify_pertp else 0.
+        auprc = average_precision_score(trues, probs.cpu().float().numpy()[:, 1]) if not args.classify_pertp else 0.
+    elif args.data == 'PAM' or args.data == 'activity':
+        auc = roc_auc_score(one_hot(trues), probs.detach().cpu().float().numpy())
+        auprc = average_precision_score(one_hot(trues),
+                                                probs.detach().cpu().float().numpy())
+        precision = precision_score(trues, probs.detach().cpu().float().numpy().argmax(1),
+                                            average='macro', )
+        recall = recall_score(trues, probs.detach().cpu().float().numpy().argmax(1),
+                                    average='macro', )
+        F1 = 2 * (precision * recall) / (
+                precision + recall)
     # total_mae_loss = np.average(total_mae_loss)
 
     model.train()
     # return total_loss, total_mae_loss
-    return total_loss, accuracy, auc, auprc
-
+    if args.data == 'P12' or args.data == 'P19' or args.data == 'eICU' or args.data == 'MIMIC':
+        return total_loss, accuracy, auc, auprc
+    elif args.data == 'PAM' or args.data == 'activity':
+        return total_loss, accuracy, auc, auprc, precision, recall, F1
 
 # def test(args, accelerator, model, test_loader, criterion, metric, setting, test=0):
 #     # test_data, test_loader = data_provider(args, 'test')
@@ -473,17 +494,21 @@ def test(args, accelerator, model, test_loader, input_dim, setting):
                 with torch.cuda.amp.autocast():
                     if args.output_attention:
                         # outputs = model(batch_x, x_mark_enc=None, x_dec=None, x_mark_dec=None)[0]["aligned_logits"]
-                        outputs = unwrapped_model(batch_x, observed_mask, x_mark_enc=None, x_dec=None, x_mark_dec=None)[0]
+                        # outputs = unwrapped_model(batch_x, observed_mask, x_mark_enc=None, x_dec=None, x_mark_dec=None)[0]
+                        outputs = unwrapped_model(batch_x, x_mark_enc=None, x_dec=None, x_mark_dec=None)[0]
                     else:
                         # outputs = model(batch_x, x_mark_enc=None, x_dec=None, x_mark_dec=None)["aligned_logits"]
-                        outputs = unwrapped_model(batch_x, observed_mask, x_mark_enc=None, x_dec=None, x_mark_dec=None)
+                        # outputs = unwrapped_model(batch_x, observed_mask, x_mark_enc=None, x_dec=None, x_mark_dec=None)
+                        outputs = unwrapped_model(batch_x, x_mark_enc=None, x_dec=None, x_mark_dec=None)
             else:
                 if args.output_attention:
                     # outputs = model(batch_x, x_mark_enc=None, x_dec=None, x_mark_dec=None)[0]["aligned_logits"]
-                    outputs = unwrapped_model(batch_x, observed_mask, x_mark_enc=None, x_dec=None, x_mark_dec=None)[0]
+                    # outputs = unwrapped_model(batch_x, observed_mask, x_mark_enc=None, x_dec=None, x_mark_dec=None)[0]
+                    outputs = unwrapped_model(batch_x, x_mark_enc=None, x_dec=None, x_mark_dec=None)[0]
                 else:
                     # outputs = model(batch_x, x_mark_enc=None, x_dec=None, x_mark_dec=None)["aligned_logits"]
-                    outputs = unwrapped_model(batch_x, observed_mask, x_mark_enc=None, x_dec=None, x_mark_dec=None)
+                    # outputs = unwrapped_model(batch_x, observed_mask, x_mark_enc=None, x_dec=None, x_mark_dec=None)
+                    outputs = unwrapped_model(batch_x, x_mark_enc=None, x_dec=None, x_mark_dec=None)
                 # outputs = outputs.to(torch.float32)
 
             print(f"outputs shape: {outputs.shape}, dtype: {outputs.dtype}")
@@ -494,6 +519,10 @@ def test(args, accelerator, model, test_loader, input_dim, setting):
             # f_dim = -1 if args.features == 'MS' else 0
             # outputs = outputs[:, -args.pred_len:, f_dim:]
             # batch_y = batch_y[:, -args.pred_len:, f_dim:].to(accelerator.device)
+
+            if args.classify_pertp:
+                outputs = outputs.reshape(-1, args.num_classes)
+                batch_y = batch_y.argmax(-1).reshape(-1)
 
             print(f"outputs shape: {outputs.shape}, type: {outputs.dtype}")
             # loss = criterion(outputs, batch_y)
@@ -516,15 +545,29 @@ def test(args, accelerator, model, test_loader, input_dim, setting):
     # auprc = auprc_metric(probs, trues)
     predictions = torch.argmax(probs, dim=1).cpu().numpy()
     trues = trues.flatten().cpu().numpy()
-    auc = roc_auc_score(trues, probs.cpu().float().numpy()[:, 1]) if not args.classify_pertp else 0.
-    auprc = average_precision_score(trues, probs.cpu().float().numpy()[:, 1]) if not args.classify_pertp else 0.
     accuracy = cal_accuracy(predictions, trues)
 
+    if args.data == 'P12' or args.data == 'P19' or args.data == 'eICU' or args.data == 'MIMIC':
+        auc = roc_auc_score(trues, probs.cpu().float().numpy()[:, 1]) if not args.classify_pertp else 0.
+        auprc = average_precision_score(trues, probs.cpu().float().numpy()[:, 1]) if not args.classify_pertp else 0.
+    elif args.data == 'PAM' or args.data == 'activity':
+        auc = roc_auc_score(one_hot(trues), probs.detach().cpu().float().numpy())
+        auprc = average_precision_score(one_hot(trues),
+                                                probs.detach().cpu().float().numpy())
+        precision = precision_score(trues, probs.detach().cpu().float().numpy().argmax(1),
+                                            average='macro', )
+        recall = recall_score(trues, probs.detach().cpu().float().numpy().argmax(1),
+                                    average='macro', )
+        F1 = 2 * (precision * recall) / (
+                precision + recall)
 
     # total_mae_loss = np.average(total_mae_loss)
     if accelerator.is_local_main_process:
         # return total_loss, total_mae_loss
-        print("Test Acc: {0:.7f} Test AUROC: {1:.7f} Test AUPRC: {2:.7f}".format(accuracy, auc, auprc))
+        if args.data == 'P12' or args.data == 'P19' or args.data == 'eICU' or args.data == 'MIMIC':
+            print("Test Acc: {0:.7f} Test AUROC: {1:.7f} Test AUPRC: {2:.7f}".format(accuracy, auc, auprc))
+        elif args.data == 'PAM' or args.data == 'activity':
+            print("Test Acc: {0:.7f} Test AUROC: {1:.7f} Test AUPRC: {2:.7f} Test Precision: {3:.7f} Test Recall: {4:.7f} Test F1: {5:.7f}".format(accuracy, auc, auprc, precision, recall, F1))
 
         # resuqlt save
         folder_path = './results/' + setting + '/'
@@ -588,3 +631,12 @@ def load_content(args):
     with open('./dataset/prompt_bank/{0}.txt'.format(file), 'r') as f:
         content = f.read()
     return content
+
+def one_hot(y_):
+        # Function to encode output labels from number indexes
+        # e.g.: [[5], [0], [3]] --> [[0, 0, 0, 0, 0, 1], [1, 0, 0, 0, 0, 0], [0, 0, 0, 1, 0, 0]]
+        y_ = y_.reshape(len(y_))
+
+        y_ = [int(x) for x in y_]
+        n_values = np.max(y_) + 1
+        return np.eye(n_values)[np.array(y_, dtype=np.int32)]

@@ -342,7 +342,7 @@ class Exp_IR_Classification(Exp_Basic):
             if self.args.data == 'P12' or self.args.data == 'P19' or self.args.data == 'eICU' or self.args.data == 'MIMIC':
                 early_stopping(-vali_auprc, self.model, path)
             elif self.args.data == 'PAM' or self.args.data == 'activity':
-                early_stopping(-vali_F1, self.model, path)
+                early_stopping(-vali_accuracy, self.model, path)
             # early_stopping(vali_loss, self.model, path)
             if early_stopping.early_stop:
                 print("Early stopping")
@@ -566,6 +566,8 @@ class Exp_IR_Classification(Exp_Basic):
             f.close()
         elif args.data == 'PAM' or args.data == 'activity':
             print('Accuracy:{}'.format(accuracy))
+            print('AUPRC:{}'.format(auprc))
+            print('AUC:{}'.format(auc))
             print('Precision:{}'.format(precision))
             print('Recall:{}'.format(recall))
             print('F1 score:{}'.format(F1))
@@ -574,6 +576,10 @@ class Exp_IR_Classification(Exp_Basic):
             f = open(os.path.join(folder_path, file_name), 'a')
             f.write(setting + "  \n")
             f.write('Accuracy:{}'.format(accuracy))
+            f.write('\n')
+            f.write('AUPRC:{}'.format(auprc))
+            f.write('\n')
+            f.write('AUROC:{}'.format(auc))
             f.write('\n')
             f.write('Precision:{}'.format(precision))
             f.write('\n')

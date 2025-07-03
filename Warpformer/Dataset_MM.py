@@ -318,7 +318,7 @@ def get_activity_data(args, device):
     print(dataset_obj)
 
     train_data, test_data = model_selection.train_test_split(dataset_obj, train_size=0.8,
-                                                             random_state=42, shuffle=False)
+                                                             random_state=args.seed, shuffle=False)
 
     record_id, tt, vals, mask, labels = train_data[0]
     input_dim = vals.size(-1)
@@ -327,8 +327,8 @@ def get_activity_data(args, device):
     batch_size = min(len(dataset_obj), args.batch_size)
 
     if not args.retrain:
-        train_data, val_data = model_selection.train_test_split(train_data, train_size=0.8,
-                                                                random_state=11, shuffle=False)
+        train_data, val_data = model_selection.train_test_split(train_data, train_size=0.75,
+                                                                random_state=args.seed, shuffle=False)
 
         val_data_combined = variable_time_collate_fn(val_data, device, input_dim=input_dim, activity=True)
         val_data_combined = TensorDataset(

@@ -60,7 +60,7 @@ torch.manual_seed(1)
 
 import argparse
 parser = argparse.ArgumentParser()
-parser.add_argument('--dataset', type=str, default='P12', choices=['P12', 'P19', 'eICU', 'PAM']) #
+parser.add_argument('--dataset', type=str, default='P12', choices=['P12', 'P19', 'eICU', 'PAM', 'MIMIC', 'activity']) #
 parser.add_argument('--withmissingratio', default=False, help='if True, missing ratio ranges from 0 to 0.5; if False, missing ratio =0') #
 parser.add_argument('--splittype', type=str, default='random', choices=['random', 'age', 'gender'], help='only use for P12 and P19')
 parser.add_argument('--reverse', default=False, help='if True,use female, older for tarining; if False, use female or younger for training') #
@@ -86,6 +86,10 @@ elif dataset == 'eICU':
     base_path = './data/eICUdata'
 elif dataset == 'PAM':
     base_path = './data/PAMdata'
+elif dataset == 'MIMIC':
+    base_path = './data/MIMICdata'
+elif dataset == 'activity':
+    base_path = './data/Activitydata'
 
 baseline = False  # always False for Raindrop
 split = args.splittype  # possible values: 'random', 'age', 'gender'
@@ -106,7 +110,10 @@ sensor_wise_mask = False
 
 for missing_ratio in missing_ratios:
     num_epochs = 20
-    learning_rate = 0.0001  # 0.001 works slightly better, sometimes 0.0001 better, depends on settings and datasets
+    if dataset == 'MIMIC':
+        learning_rate = 0.00000000000000000001
+    else:
+        learning_rate = 0.0001  # 0.001 works slightly better, sometimes 0.0001 better, depends on settings and datasets
 
     if dataset == 'P12':
         d_static = 9
@@ -123,6 +130,14 @@ for missing_ratio in missing_ratios:
     elif dataset == 'PAM':
         d_static = 0
         d_inp = 17
+        static_info = None
+    elif dataset == 'MIMIC':
+        d_static = 0
+        d_inp = 96
+        static_info = None
+    elif dataset == 'activity':
+        d_static = 0
+        d_inp = 12
         static_info = None
 
     d_ob = 4
@@ -144,13 +159,22 @@ for missing_ratio in missing_ratios:
     elif dataset == 'PAM':
         max_len = 600
         n_classes = 8
+    elif dataset == 'MIMIC':
+        max_len = 643
+        n_classes = 2
+    elif dataset == 'activity':
+        max_len = 50
+        n_classes = 7
 
     aggreg = 'mean'
 
     MAX = 100
 
     n_runs = 1
-    n_splits = 5
+    if dataset == 'activity':
+        n_splits = 3
+    else:
+        n_splits = 5
     subset = False
 
     acc_arr = np.zeros((n_splits, n_runs))
@@ -173,6 +197,10 @@ for missing_ratio in missing_ratios:
             split_path = '/splits/eICU_split' + str(split_idx) + '.npy'
         elif dataset == 'PAM':
             split_path = '/splits/PAM_split_' + str(split_idx) + '.npy'
+        elif dataset == 'MIMIC':
+            split_path = '/splits/MIMIC_split' + str(split_idx) + '.npy'
+        elif dataset == 'activity':
+            split_path = '/splits/activity_split' + str(split_idx) + '.npy'
 
         # prepare the data:
         Ptrain, Pval, Ptest, ytrain, yval, ytest = get_data_split(base_path, split_path, split_type=split, reverse=reverse,
@@ -211,6 +239,33 @@ for missing_ratio in missing_ratios:
             Pval_tensor, Pval_static_tensor, Pval_time_tensor, yval_tensor = tensorize_normalize_other(Pval, yval, mf, stdf)
             Ptest_tensor, Ptest_static_tensor, Ptest_time_tensor, ytest_tensor = tensorize_normalize_other(Ptest, ytest, mf, stdf)
 
+        elif dataset == 'MIMIC':
+            T, F = Ptrain[0]['arr'].shape
+            D = 1
+
+            Ptrain_tensor = np.zeros((len(Ptrain), T, F))
+            Ptrain_static_tensor = np.zeros((len(Ptrain), D))
+
+            for i in range(len(Ptrain)):
+                Ptrain_tensor[i] = Ptrain[i]['arr']
+
+            mf, stdf = getStats(Ptrain_tensor)
+            Ptrain_tensor, Ptrain_static_tensor, Ptrain_time_tensor, ytrain_tensor = tensorize_normalize_other_v2(Ptrain, ytrain, mf, stdf)
+            Pval_tensor, Pval_static_tensor, Pval_time_tensor, yval_tensor = tensorize_normalize_other_v2(Pval, yval, mf, stdf)
+            Ptest_tensor, Ptest_static_tensor, Ptest_time_tensor, ytest_tensor = tensorize_normalize_other_v2(Ptest, ytest, mf, stdf)
+
+        elif dataset == 'activity':
+            T, F = Ptrain[0].shape
+            D = 1
+
+            Ptrain_tensor = Ptrain
+            Ptrain_static_tensor = np.zeros((len(Ptrain), D))
+
+            mf, stdf = getStats(Ptrain)
+            Ptrain_tensor, Ptrain_static_tensor, Ptrain_time_tensor, ytrain_tensor = tensorize_normalize_activity(Ptrain, ytrain, mf, stdf)
+            Pval_tensor, Pval_static_tensor, Pval_time_tensor, yval_tensor = tensorize_normalize_activity(Pval, yval, mf, stdf)
+            Ptest_tensor, Ptest_static_tensor, Ptest_time_tensor, ytest_tensor = tensorize_normalize_activity(Ptest, ytest, mf, stdf)
+
         global_structure = torch.ones(d_inp, d_inp)
 
         # remove part of variables in validation and test set
@@ -246,11 +301,11 @@ for missing_ratio in missing_ratios:
             if dataset == 'P12' or dataset == 'P19' or dataset == 'eICU':
                 model = Raindrop_v2(d_inp, d_model, nhead, nhid, nlayers, dropout, max_len,
                                     d_static, MAX, 0.5, aggreg, n_classes, global_structure,
-                                    sensor_wise_mask=sensor_wise_mask)
-            elif dataset == 'PAM':
+                                    sensor_wise_mask=sensor_wise_mask, dataset=dataset)
+            elif dataset == 'PAM' or dataset == 'MIMIC' or dataset == 'activity':
                 model = Raindrop_v2(d_inp, d_model, nhead, nhid, nlayers, dropout, max_len,
                                     d_static, MAX, 0.5, aggreg, n_classes, global_structure,
-                                    sensor_wise_mask=sensor_wise_mask, static=False)
+                                    sensor_wise_mask=sensor_wise_mask, static=False, dataset=dataset)
 
             model = model.cuda()
 
@@ -263,9 +318,9 @@ for missing_ratio in missing_ratios:
             idx_0 = np.where(ytrain == 0)[0]
             idx_1 = np.where(ytrain == 1)[0]
 
-            if dataset == 'P12' or dataset == 'P19' or dataset == 'eICU':
+            if dataset == 'P12' or dataset == 'P19' or dataset == 'eICU' or dataset == 'MIMIC':
                 strategy = 2
-            elif dataset == 'PAM':
+            elif dataset == 'PAM' or dataset == 'activity':
                 strategy = 3
 
             n0, n1 = len(idx_0), len(idx_1)
@@ -312,26 +367,45 @@ for missing_ratio in missing_ratios:
                     if dataset == 'P12' or dataset == 'P19' or dataset == 'eICU':
                         P, Ptime, Pstatic, y = Ptrain_tensor[:, idx, :].cuda(), Ptrain_time_tensor[:, idx].cuda(), \
                                                Ptrain_static_tensor[idx].cuda(), ytrain_tensor[idx].cuda()
-                    elif dataset == 'PAM':
+                    elif dataset == 'PAM' or dataset == 'MIMIC' or dataset == 'activity':
                         P, Ptime, Pstatic, y = Ptrain_tensor[:, idx, :].cuda(), Ptrain_time_tensor[:, idx].cuda(), \
                                                None, ytrain_tensor[idx].cuda()
+                        print("P", P)
+                        print("Ptime", Ptime)
+                        print("y", y)
 
                     lengths = torch.sum(Ptime > 0, dim=0)
 
                     outputs, local_structure_regularization, _ = model.forward(P, Pstatic, Ptime, lengths)
+
+                    print("outputs", outputs)
+                    if dataset == 'activity':
+                        print("outputs shape", outputs.shape)
+                        outputs = outputs.reshape(-1, 7)
+                        print("outputs shape", outputs.shape)
+                        print("y shape", y.shape)
+                        y = y.reshape(-1).long()
+                        print("y shape", y.shape)
 
                     optimizer.zero_grad()
                     loss = criterion(outputs, y)
                     loss.backward()
                     optimizer.step()
 
-                if dataset == 'P12' or dataset == 'P19' or dataset == 'eICU':
+                if dataset == 'P12' or dataset == 'P19' or dataset == 'eICU' or dataset == 'MIMIC':
+                    print("outputs", outputs)
                     train_probs = torch.squeeze(torch.sigmoid(outputs))
                     train_probs = train_probs.cpu().detach().numpy()
                     train_y = y.cpu().detach().numpy()
                     train_auroc = roc_auc_score(train_y, train_probs[:, 1])
                     train_auprc = average_precision_score(train_y, train_probs[:, 1])
                 elif dataset == 'PAM':
+                    train_probs = torch.squeeze(nn.functional.softmax(outputs, dim=1))
+                    train_probs = train_probs.cpu().detach().numpy()
+                    train_y = y.cpu().detach().numpy()
+                    train_auroc = roc_auc_score(one_hot(train_y), train_probs)
+                    train_auprc = average_precision_score(one_hot(train_y), train_probs)
+                elif dataset == 'activity':
                     train_probs = torch.squeeze(nn.functional.softmax(outputs, dim=1))
                     train_probs = train_probs.cpu().detach().numpy()
                     train_y = y.cpu().detach().numpy()
@@ -348,17 +422,28 @@ for missing_ratio in missing_ratios:
                 if epoch == 0 or epoch % 1 == 0:
                     with torch.no_grad():
                         out_val = evaluate_standard(model, Pval_tensor, Pval_time_tensor, Pval_static_tensor, static=static_info)
-                        out_val = torch.squeeze(torch.sigmoid(out_val))
+                        if dataset == 'activity':
+                            out_val = out_val.reshape(-1, 7)
+                            yval = yval.reshape(-1)
+                        else:
+                            out_val = torch.squeeze(torch.sigmoid(out_val))
                         out_val = out_val.detach().cpu().numpy()
 
-                        val_loss = criterion(torch.from_numpy(out_val), torch.from_numpy(yval.squeeze(1)).long())
+                        if dataset == 'activity':
+                            val_loss = criterion(torch.from_numpy(out_val), torch.from_numpy(yval).long())
+                        else:
+                            val_loss = criterion(torch.from_numpy(out_val), torch.from_numpy(yval.squeeze(1)).long())
 
-                        if dataset == 'P12' or dataset == 'P19' or dataset == 'eICU':
+                        if dataset == 'P12' or dataset == 'P19' or dataset == 'eICU' or dataset == 'MIMIC':
                             auc_val = roc_auc_score(yval, out_val[:, 1])
                             aupr_val = average_precision_score(yval, out_val[:, 1])
                         elif dataset == 'PAM':
                             auc_val = roc_auc_score(one_hot(yval), out_val)
                             aupr_val = average_precision_score(one_hot(yval), out_val)
+                        elif dataset == 'activity':
+                            val_probs = nn.functional.softmax(torch.from_numpy(out_val), dim=1)
+                            auc_val = roc_auc_score(one_hot(yval), val_probs)
+                            aupr_val = average_precision_score(one_hot(yval), val_probs)
 
                         print("Validation: Epoch %d,  val_loss:%.4f, aupr_val: %.2f, auc_val: %.2f" % (epoch,
                                                                                                         val_loss.item(),
@@ -384,7 +469,13 @@ for missing_ratio in missing_ratios:
             model.eval()
 
             with torch.no_grad():
-                out_test = evaluate(model, Ptest_tensor, Ptest_time_tensor, Ptest_static_tensor, n_classes=n_classes, static=static_info).numpy()
+                out_test = evaluate(model, Ptest_tensor, Ptest_time_tensor, Ptest_static_tensor, n_classes=n_classes, static=static_info, dataset=dataset).numpy()
+                if dataset == 'activity':
+                    print("out_test shape", out_test.shape)
+                    out_test = out_test.reshape(-1, 7)
+                    ytest = ytest.reshape(-1)
+                    # out_test = nn.functional.softmax(out_test, dim=1)
+
                 ypred = np.argmax(out_test, axis=1)
 
                 denoms = np.sum(np.exp(out_test), axis=1).reshape((-1, 1))
@@ -392,7 +483,7 @@ for missing_ratio in missing_ratios:
 
                 acc = np.sum(ytest.ravel() == ypred.ravel()) / ytest.shape[0]
 
-                if dataset == 'P12' or dataset == 'P19' or dataset == 'eICU':
+                if dataset == 'P12' or dataset == 'P19' or dataset == 'eICU' or dataset == 'MIMIC':
                     auc = roc_auc_score(ytest, probs[:, 1])
                     aupr = average_precision_score(ytest, probs[:, 1])
                     precision = precision_score(ytest, ypred)
@@ -400,6 +491,13 @@ for missing_ratio in missing_ratios:
                     F1 = f1_score(ytest, ypred)
                     print('Testing: Precision = %.2f | Recall = %.2f | F1 = %.2f' % (precision * 100, recall * 100, F1 * 100))
                 elif dataset == 'PAM':
+                    auc = roc_auc_score(one_hot(ytest), probs)
+                    aupr = average_precision_score(one_hot(ytest), probs)
+                    precision = precision_score(ytest, ypred, average='macro', )
+                    recall = recall_score(ytest, ypred, average='macro', )
+                    F1 = f1_score(ytest, ypred, average='macro', )
+                    print('Testing: Precision = %.2f | Recall = %.2f | F1 = %.2f' % (precision * 100, recall * 100, F1 * 100))
+                elif dataset == 'activity':
                     auc = roc_auc_score(one_hot(ytest), probs)
                     aupr = average_precision_score(one_hot(ytest), probs)
                     precision = precision_score(ytest, ypred, average='macro', )

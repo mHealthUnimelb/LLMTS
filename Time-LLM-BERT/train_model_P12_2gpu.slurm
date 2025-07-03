@@ -5,7 +5,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=2
 #SBATCH --ntasks-per-node=2
-#SBATCH --time=10:00:00
+#SBATCH --time=06:00:00
 #SBATCH --gres=gpu:2
 #SBATCH --mem-per-cpu=60G
 
@@ -15,7 +15,7 @@ module load Anaconda3/2022.10
 NCCL_DEBUG=INFO
 eval "$(conda shell.bash hook)"
 conda activate time_llm
-bash ./scripts/TimeLLM4_P12_2gpu.sh
+bash ./scripts/TimeLLM_P12_2gpu.sh
 
 ##DO NOT ADD/EDIT BEYOND THIS LINE##
 ##Job monitor command to list the resource usage

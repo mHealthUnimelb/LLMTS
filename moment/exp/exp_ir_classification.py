@@ -10,7 +10,28 @@ from torch import optim
 import numpy as np
 from sklearn.metrics import confusion_matrix, average_precision_score, ConfusionMatrixDisplay, precision_recall_curve, \
     auc, roc_auc_score, precision_score, recall_score, f1_score
-from utils.tools import EarlyStopping, adjust_learning_rate, adjust_model
+from utils.tools import EarlyStopping, adjust_learning_rate, adjust_model, one_hot
+
+class TokenClassificationHead(nn.Module):
+    """
+    Converts encoder outputs to per-time-step logits
+    """
+    def __init__(self, n_channels, seq_len, d_model, num_class, head_dropout=0.1):
+        super().__init__()
+        self.dropout = nn.Dropout(head_dropout)
+        self.seq_len = seq_len
+        self.proj = nn.Linear(n_channels * d_model, num_class)
+
+    def forward(self, x, input_mask: torch.Tensor = None):
+        print("x shape", x.shape) # (64, 6, 6144)
+        x = x.mean(1)
+        print('x shape', x.shape)        # (64, 6144)
+        x = x.unsqueeze(1)
+        x = x.repeat(1, self.seq_len, 1)
+        print('x shape', x.shape)
+        logits = self.proj(x)
+
+        return logits                     # (B, L, K)
 
 class Exp_IR_Classification(Exp_Basic):
     def __init__(self, args):
@@ -39,6 +60,20 @@ class Exp_IR_Classification(Exp_Basic):
         return data_set, data_loader
 
     def _build_model(self):
+        # if self.args.classify_pertp:
+        #     model = MOMENTPipeline.from_pretrained(
+        #         "AutonLab/MOMENT-1-small",
+        #         model_kwargs={
+        #             "task_name": 'embedding',
+        #             "freeze_encoder": True,
+        #             "freeze_embedder": True,
+        #         }
+        #     )
+        #     model.init()
+        #     d_model = model.config.d_model
+        #     patch_len = model.config.patch_len
+        #     model.head = TokenClassificationHead(d_model, self.args.num_classes, patch_len)
+        # else:
         model = MOMENTPipeline.from_pretrained(
             "AutonLab/MOMENT-1-small",
             model_kwargs={
@@ -50,6 +85,12 @@ class Exp_IR_Classification(Exp_Basic):
             },
         )
         model.init()
+        if self.args.classify_pertp:
+            n_channel = model.config.n_channels
+            print("n_channel", n_channel)
+            seq_len = self.args.seq_len
+            d_model = model.config.d_model
+            model.head = TokenClassificationHead(n_channel, seq_len, d_model, self.args.num_classes)
         model.to(self.device)
         print("device:", self.device)
         return model
@@ -123,15 +164,24 @@ class Exp_IR_Classification(Exp_Basic):
                 # outputs = self.model(x_enc=batch_x, input_mask=time_mask_int)
                 outputs = self.model(x_enc=batch_x)
 
+                print(outputs)
+                print("embeddings shape", outputs.embeddings.shape)
+
                 # print(
                 #     f"Label min: {label.min()}, Label max: {label.max()}, Label dtype: {label.dtype}, Label shape: {label.shape}")
                 # print(f"outputs.shape: {outputs['outputs_time'].shape}, outputs.dtype: {outputs['outputs_time'].dtype}")
                 # print(f"label.shape: {label.shape}, label.dtype: {label.dtype}")
                 # print(f"label unique values: {torch.unique(label)}")
-                loss = criterion(outputs.logits, label.long().squeeze(-1))
+                
+                if self.args.classify_pertp:
+                    outputs = outputs.logits.reshape(-1, self.args.num_classes)
+                    label = label.argmax(-1).reshape(-1)
+                else:
+                    outputs = outputs.logits
+                loss = criterion(outputs, label.long().squeeze(-1))
                 train_loss.append(loss.item())
 
-                train_preds.append(outputs.logits)
+                train_preds.append(outputs)
                 train_trues.append(label)
 
                 if (i + 1) % 100 == 0:
@@ -190,32 +240,32 @@ class Exp_IR_Classification(Exp_Basic):
                     "Epoch: {0}, Steps: {1} | Train Loss: {2:.3f} Train Acc: {3:.3f} Train AUPRC: {4:.3f} Train AUC: {5:.3f} Vali Loss: {6:.3f} Vali Acc: {7:.3f} Vali AUPRC: {8:.3f} Vali AUC: {9:.3f} Test Loss: {10:.3f} Test Acc: {11:.3f} Test AUPRC: {12:.3f} Test AUC: {13:.3f}"
                     .format(epoch + 1, train_steps, train_loss, train_accuracy, train_auprc, train_auc, vali_loss,
                             vali_accuracy, vali_auprc, vali_auc, test_loss, test_accuracy, test_auprc, test_auc))
-            elif self.args.data == 'PAM':
-                train_auc = roc_auc_score(self._one_hot(train_trues),
-                                          train_probs.detach().cpu().numpy()) if not self.args.classify_pertp else 0.
-                train_auprc = average_precision_score(self._one_hot(train_trues),
-                                                      train_probs.detach().cpu().numpy()) if not self.args.classify_pertp else 0.
+            elif self.args.data == 'PAM' or self.args.data == 'activity':
+                train_auc = roc_auc_score(one_hot(train_trues),
+                                          train_probs.detach().cpu().numpy())
+                train_auprc = average_precision_score(one_hot(train_trues),
+                                                      train_probs.detach().cpu().numpy())
                 train_precision = precision_score(train_trues, train_probs.detach().cpu().numpy().argmax(1),
-                                                  average='macro', ) if not self.args.classify_pertp else 0.
+                                                  average='macro', )
                 train_recall = recall_score(train_trues, train_probs.detach().cpu().numpy().argmax(1),
-                                            average='macro', ) if not self.args.classify_pertp else 0.
+                                            average='macro', )
                 train_F1 = 2 * (train_precision * train_recall) / (
-                        train_precision + train_recall) if not self.args.classify_pertp else 0.
+                        train_precision + train_recall)
                 train_accuracy = correct.mean().item()
 
-                vali_loss, vali_accuracy, vali_precision, vali_recall, vali_F1 = self.vali(self.args,
+                vali_loss, vali_accuracy, vali_auprc, vali_auc, vali_precision, vali_recall, vali_F1 = self.vali(self.args,
                                                                                            self.vali_loader,
-                                                                                           self._select_vali_criterion())
+                                                                                           criterion)
 
-                test_loss, test_accuracy, test_precision, test_recall, test_F1 = self.vali(self.args,
+                test_loss, test_accuracy, test_auprc, test_auc, test_precision, test_recall, test_F1 = self.vali(self.args,
                                                                                            self.test_loader,
-                                                                                           self._select_vali_criterion())
+                                                                                           criterion)
 
                 print(
-                    "Epoch: {0}, Steps: {1} | Train Loss: {2:.3f} Train Acc: {3:.3f} Train Precision: {4:.3f} Train Recall: {5:.3f} Train F1 score: {6:.3f} Vali Loss: {7:.3f} Vali Acc: {8:.3f} Vali Precision: {9:.3f} Vali Recall: {10:.3f} Vali F1 score: {11:.3f} Test Loss: {12:.3f} Test Acc: {13:.3f} Test Prcision: {14:.3f} Test Recall: {15:.3f} Test F1 score: {16:.3f}"
-                    .format(epoch + 1, train_steps, train_loss, train_accuracy, train_precision, train_recall, train_F1,
-                            vali_loss, vali_accuracy, vali_precision, vali_recall, vali_F1, test_loss, test_accuracy,
-                            test_precision, test_recall, test_F1))
+                    "Epoch: {0}, Steps: {1} | Train Loss: {2:.3f} Train Acc: {3:.3f} Train AUPRC: {4:.3f} Train AUROC: {5:.3f} Train Precision: {6:.3f} Train Recall: {7:.3f} Train F1 score: {8:.3f} Vali Loss: {9:.3f} Vali Acc: {10:.3f} Vali AUPRC: {11:.3f} Vali AUROC: {12:.3f} Vali Precision: {13:.3f} Vali Recall: {14:.3f} Vali F1 score: {15:.3f} Test Loss: {16:.3f} Test Acc: {17:.3f} Test AUPRC: {18:.3f} Test AUROC: {19:.3f} Test Prcision: {20:.3f} Test Recall: {21:.3f} Test F1 score: {22:.3f}"
+                    .format(epoch + 1, train_steps, train_loss, train_accuracy, train_auprc, train_auc, train_precision, train_recall, train_F1,
+                            vali_loss, vali_accuracy, vali_auprc, vali_auc, vali_precision, vali_recall, vali_F1, test_loss, test_accuracy,
+                            test_auprc, test_auc, test_precision, test_recall, test_F1))
 
             # if self.args.cos:
             #     scheduler.step()
@@ -226,8 +276,8 @@ class Exp_IR_Classification(Exp_Basic):
             # early_stopping(-vali_accuracy, self.model, path)
             if self.args.data == 'P12' or self.args.data == 'P19' or self.args.data == 'eICU' or self.args.data == 'MIMIC':
                 early_stopping(-vali_auprc, self.model, path)
-            elif self.args.data == 'PAM':
-                early_stopping(-vali_F1, self.model, path)
+            elif self.args.data == 'PAM' or self.args.data == 'activity':
+                early_stopping(-vali_accuracy, self.model, path)
             # early_stopping(vali_loss, self.model, path)
             if early_stopping.early_stop:
                 print("Early stopping")
@@ -262,7 +312,13 @@ class Exp_IR_Classification(Exp_Basic):
                 # outputs = self.model(x_enc=batch_x, input_mask=time_mask_int)
                 outputs = self.model(x_enc=batch_x)
 
-                pred = outputs.logits.detach()
+                if self.args.classify_pertp:
+                    outputs = outputs.logits.reshape(-1, self.args.num_classes)
+                    label = label.argmax(-1).reshape(-1)
+                else:
+                    outputs = outputs.logits
+
+                pred = outputs.detach()
                 loss = criterion(pred, label.long().squeeze(-1))
                 total_loss.append(loss.cpu().numpy())
 
@@ -284,15 +340,15 @@ class Exp_IR_Classification(Exp_Basic):
         if args.data == 'P12' or args.data == 'P19' or args.data == 'eICU' or args.data == 'PhysioNet' or args.data == 'MIMIC':
             auc = roc_auc_score(trues, probs.cpu().numpy()[:, 1]) if not args.classify_pertp else 0.
             auprc = average_precision_score(trues, probs.cpu().numpy()[:, 1]) if not args.classify_pertp else 0.
-        elif args.data == 'PAM':
-            auc = roc_auc_score(self._one_hot(trues), probs.cpu().numpy()) if not args.classify_pertp else 0.
-            auprc = average_precision_score(self._one_hot(trues),
-                                            probs.cpu().numpy()) if not args.classify_pertp else 0.
+        elif args.data == 'PAM' or args.data == 'activity':
+            auc = roc_auc_score(one_hot(trues), probs.cpu().numpy())
+            auprc = average_precision_score(one_hot(trues),
+                                            probs.cpu().numpy())
             precision = precision_score(trues, probs.cpu().numpy().argmax(1),
-                                        average='macro', ) if not args.classify_pertp else 0.
+                                        average='macro', )
             recall = recall_score(trues, probs.cpu().numpy().argmax(1),
-                                  average='macro', ) if not args.classify_pertp else 0.
-            F1 = 2 * (precision * recall) / (precision + recall) if not args.classify_pertp else 0.
+                                  average='macro', )
+            F1 = 2 * (precision * recall) / (precision + recall)
         accuracy = np.mean(predictions == trues)
 
         # Saving true labels and predictions
@@ -302,8 +358,8 @@ class Exp_IR_Classification(Exp_Basic):
         self.model.train()
         if args.data == 'P12' or args.data == 'P19' or args.data == 'eICU' or args.data == 'PhysioNet' or args.data == 'MIMIC':
             return total_loss, accuracy, auprc, auc
-        elif args.data == 'PAM':
-            return total_loss, accuracy, precision, recall, F1
+        elif args.data == 'PAM' or args.data == 'activity':
+            return total_loss, accuracy, auprc, auc, precision, recall, F1
 
 
     def test(self, setting, test=0):
@@ -335,8 +391,14 @@ class Exp_IR_Classification(Exp_Basic):
                 # outputs = self.model(x_enc=batch_x, input_mask=time_mask_int)
                 outputs = self.model(x_enc=batch_x)
 
+                if self.args.classify_pertp:
+                    outputs = outputs.logits.reshape(-1, self.args.num_classes)
+                    batch_y = batch_y.argmax(-1).reshape(-1)
+                else:
+                    outputs = outputs.logits
+
                 # pred = outputs
-                prob = outputs.logits
+                prob = outputs
                 print("prob shape", prob.shape)
                 true = batch_y
 
@@ -358,15 +420,15 @@ class Exp_IR_Classification(Exp_Basic):
         if self.args.data == 'P12' or self.args.data == 'P19' or self.args.data == 'eICU' or self.args.data == 'PhysioNet' or self.args.data == 'MIMIC':
             auc = roc_auc_score(trues, probs.cpu().numpy()[:, 1]) if not self.args.classify_pertp else 0.
             auprc = average_precision_score(trues, probs.cpu().numpy()[:, 1]) if not self.args.classify_pertp else 0.
-        elif self.args.data == 'PAM':
-            auc = roc_auc_score(self._one_hot(trues), probs.cpu().numpy()) if not self.args.classify_pertp else 0.
-            auprc = average_precision_score(self._one_hot(trues),
-                                            probs.cpu().numpy()) if not self.args.classify_pertp else 0.
+        elif self.args.data == 'PAM' or self.args.data == 'activity':
+            auc = roc_auc_score(one_hot(trues), probs.cpu().numpy())
+            auprc = average_precision_score(one_hot(trues),
+                                            probs.cpu().numpy())
             precision = precision_score(trues, probs.cpu().numpy().argmax(1),
-                                        average='macro', ) if not self.args.classify_pertp else 0.
+                                        average='macro', )
             recall = recall_score(trues, probs.cpu().numpy().argmax(1),
-                                  average='macro', ) if not self.args.classify_pertp else 0.
-            F1 = 2 * (precision * recall) / (precision + recall) if not self.args.classify_pertp else 0.
+                                  average='macro', )
+            F1 = 2 * (precision * recall) / (precision + recall)
 
         # result save
         folder_path = './results/' + setting + '/'
@@ -387,10 +449,14 @@ class Exp_IR_Classification(Exp_Basic):
             f.write('\n')
             f.write('\n')
             f.close()
-        elif self.args.data == 'PAM':
+        elif self.args.data == 'PAM' or self.args.data == 'activity':
             f = open(os.path.join(folder_path, "result_classification.txt"), 'a')
             f.write(setting + "  \n")
             f.write('Accuracy:{}'.format(accuracy))
+            f.write('\n')
+            f.write('AUPRC:{}'.format(auprc))
+            f.write('\n')
+            f.write('AUROC:{}'.format(auc))
             f.write('\n')
             f.write('Precision:{}'.format(precision))
             f.write('\n')
@@ -407,5 +473,5 @@ class Exp_IR_Classification(Exp_Basic):
 
         if self.args.data == 'P12' or self.args.data == 'P19' or self.args.data == 'eICU' or self.args.data == 'MIMIC':
             return accuracy, auprc, auc
-        elif self.args.data == 'PAM':
-            return accuracy, precision, recall, F1
+        elif self.args.data == 'PAM' or self.args.data == 'activity':
+            return accuracy, auprc, auc, precision, recall, F1

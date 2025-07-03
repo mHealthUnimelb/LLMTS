@@ -570,7 +570,16 @@ class Dataset_Physionet(Dataset):
         print("time steps: ", self.time_steps)
 
 class Dataset_P12(Dataset):
-    def __init__(self, args=None, root_path=None, dataset='P12', device=torch.device("cpu"), q=0.016, upsampling_batch=False,
-                 split_type='random'):
-        self.data_objects = data_provider.utils.get_data(args, dataset, device, q, upsampling_batch, args.split_type)
+    def __init__(self, args=None, root_path=None, dataset='P12', device=torch.device("cpu"), q=0.016, upsampling_batch=False):
+        self.data_objects = data_provider.utils.get_data(args, dataset, device, q, upsampling_batch)
         self.class_names = ["survival", "death"]
+
+class Dataset_MIMIC(Dataset):
+    def __init__(self, args=None, root_path=None, dataset='MIMIC', device=torch.device("cpu"), q=0.016, upsampling_batch=False):
+        self.data_objects = data_provider.utils.get_data(args, dataset, device, q, upsampling_batch)
+        self.class_names = [0, 1]
+
+class Dataset_activity(Dataset):
+    def __init__(self, args=None, root_path=None, dataset='activity', device=torch.device("cpu"), q=0.016, upsampling_batch=False):
+        self.data_objects = data_provider.utils.get_data(args, dataset, device, q, upsampling_batch)
+        self.class_names = [0, 1, 2, 3, 4, 5, 6]

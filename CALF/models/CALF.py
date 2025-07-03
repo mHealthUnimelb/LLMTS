@@ -102,10 +102,10 @@ class Model(nn.Module):
         if self.task_name == 'long_term_forecast' or self.task_name == 'short_term_forecast':
             self.out_layer = nn.Linear(configs.d_model, configs.pred_len)
         elif self.task_name == 'classification':
-            if configs.classify_pertp:
-                self.out_layer = nn.Linear(configs.enc_in, configs.num_class)
-            else:
-                self.out_layer = nn.Linear(configs.d_model * configs.enc_in, configs.num_class)
+            # if configs.classify_pertp:
+            #     self.out_layer = nn.Linear(configs.enc_in, configs.num_class)
+            # else:
+            self.out_layer = nn.Linear(configs.d_model * configs.enc_in, configs.num_class)
         elif self.task_name == 'imputation':
             self.out_layer = nn.Linear(configs.d_model, configs.seq_len)
         elif self.task_name == 'anomaly_detection':
@@ -192,6 +192,12 @@ class Model(nn.Module):
         # else:
         outputs_time = outputs_time.reshape(B, -1)
         outputs_text = outputs_text.reshape(B, -1)
+
+        if self.configs.classify_pertp:
+            outputs_time = outputs_time.unsqueeze(1) # (batch, 1, hidden)
+            outputs_text = outputs_text.unsqueeze(1)
+            outputs_time = outputs_time.repeat(1, L, 1) # (batch, seq_len, hidden)
+            outputs_text = outputs_text.repeat(1, L, 1)
 
         print("outputs_time shape: ", outputs_time.shape) # (128, 1536)
         print("outputs_text shape: ", outputs_text.shape) # (128, 1536)

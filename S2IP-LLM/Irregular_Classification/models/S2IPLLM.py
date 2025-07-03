@@ -68,12 +68,12 @@ class Model(nn.Module):
             self.num_classes = configs.num_classes
             self.in_layer = nn.Linear(configs.patch_size * 3, configs.d_model)
             
-            if self.configs.classify_pertp:
-                self.projection_layer = nn.Linear(int(configs.d_model / 3 * (self.patch_num + configs.prompt_length)), configs.seq_len)
-                self.classifier = nn.Linear(configs.feature_dim, self.num_classes)
-            else:
-                self.classifier = nn.Linear(int(configs.d_model / 3 * (self.patch_num + configs.prompt_length) * configs.feature_dim),
-                                            self.num_classes)
+            # if self.configs.classify_pertp:
+            #     self.projection_layer = nn.Linear(int(configs.d_model / 3 * (self.patch_num + configs.prompt_length)), configs.seq_len)
+            #     self.classifier = nn.Linear(configs.feature_dim, self.num_classes)
+            # else:
+            self.classifier = nn.Linear(int(configs.d_model / 3 * (self.patch_num + configs.prompt_length) * configs.feature_dim),
+                                        self.num_classes)
 
             self.prompt_pool = Prompt(length=1, embed_dim=768, embedding_key='mean', prompt_init='uniform',
                                       prompt_pool=False,
@@ -85,6 +85,21 @@ class Model(nn.Module):
                 layer.cuda()
                 layer.train()
 
+        elif self.task_name == 'ir_forecast':
+            self.in_layer = nn.Linear(configs.patch_size * 3, configs.d_model)
+            self.out_layer = nn.Linear(int(configs.d_model / 3 * (self.patch_num + configs.prompt_length)),
+                                       configs.pred_len)
+
+            self.prompt_pool = Prompt(length=1, embed_dim=768, embedding_key='mean', prompt_init='uniform',
+                                      prompt_pool=False,
+                                      prompt_key=True, pool_size=self.configs.pool_size,
+                                      top_k=self.configs.prompt_length, batchwise_prompt=False,
+                                      prompt_key_init=self.configs.prompt_init, wte=self.gpt2.wte.weight)
+
+            for layer in (self.gpt2, self.in_layer, self.out_layer):
+                layer.cuda()
+                layer.train()
+
     def forward(self, x_enc, x_mark_enc=None, x_dec=None, x_mark_dec=None, mask=None):
 
         if self.task_name == 'long_term_forecast':
@@ -93,6 +108,9 @@ class Model(nn.Module):
         elif self.task_name == 'ir_classification':
             logits, res = self.classify(x_enc, x_mark_enc, x_dec, x_mark_dec)
             return logits, res
+        elif self.task_name == 'ir_forecast':
+            dec_out, res = self.forecast(x_enc, x_mark_enc, x_dec, x_mark_dec)
+            return dec_out[:, -self.pred_len:, :], res  # [B, L, D]
 
         return None
 
@@ -207,17 +225,27 @@ class Model(nn.Module):
         print("outputs shape: ", outputs.shape) # [3, 83, 3, 93184]
         outputs = outputs.sum(dim=2)
         print("outputs shape: ", outputs.shape) # [3, 83, 93184]
+        
+        # if self.configs.classify_pertp:
+        #     outputs = self.projection_layer(outputs)
+        #     outputs = outputs.permute(0, 2, 1)
+        #     print("outputs shape: ", outputs.shape)
+        #     logits = self.classifier(outputs)
+        # else:
+        outputs = outputs.reshape(B, -1)
+        # nan_rows_mask = torch.isnan(outputs).all(dim=1)   # True where an entire row is NaN
+        # num_nan_rows  = nan_rows_mask.sum().item()  # count them
+        # print(f"logits before {num_nan_rows} rows are completely NaN")
+        print("outputs shape: ", outputs.shape) # [3, 7734272]
 
         if self.configs.classify_pertp:
-            outputs = self.projection_layer(outputs)
-            outputs = outputs.permute(0, 2, 1)
-            print("outputs shape: ", outputs.shape)
-            logits = self.classifier(outputs)
-        else:
-            outputs = outputs.reshape(B, -1)
-            print("outputs shape: ", outputs.shape) # [3, 7734272]
+            outputs = outputs.unsqueeze(1)
+            outputs = outputs.repeat(1, L, 1)
 
-            logits = self.classifier(outputs)
+        logits = self.classifier(outputs)
+        # nan_rows_mask = torch.isnan(logits).all(dim=1)   # True where an entire row is NaN
+        # num_nan_rows  = nan_rows_mask.sum().item()  # count them
+        # print(f"after classifer {num_nan_rows} rows are completely NaN")
         print("logits shape", logits.shape)
 
         res = dict()

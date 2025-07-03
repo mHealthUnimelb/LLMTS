@@ -17,3 +17,7 @@ conda activate calf
 
 python mTAND_baseline.py \
   --dataset P12
+
+##DO NOT ADD/EDIT BEYOND THIS LINE##
+##Job monitor command to list the resource usage
+my-job-stats -a -n -s

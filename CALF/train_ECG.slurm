@@ -1,7 +1,8 @@
 #!/bin/bash
 #SBATCH --job-name="calf"
 #SBATCH --account="punim2341"
-#SBATCH --partition=gpu-a100-short
+#SBATCH --partition=feit-gpu-a100
+#SBATCH --qos=feit
 #SBATCH --nodes=1
 #SBATCH --time=04:00:00
 #SBATCH --gres=gpu:1
@@ -20,6 +21,7 @@ model=CALF
 pred_len=0
 
 python run.py \
+    --seed 42 \
     --root_path ./datasets/ECG/ \
     --is_training 1 \
     --task_name classification \

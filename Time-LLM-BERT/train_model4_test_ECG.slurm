@@ -1,0 +1,24 @@
+#!/bin/bash
+#SBATCH --job-name="time_llm"
+#SBATCH --account="punim2341"
+#SBATCH --partition=feit-gpu-a100
+#SBATCH --qos=feit
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --ntasks-per-node=1
+#SBATCH --time=01:00:00
+#SBATCH --gres=gpu:1
+#SBATCH --mem-per-gpu=30G
+
+module purge
+module load foss/2022a
+module load mpi4py/3.1.4-Python-3.11.3
+module load Anaconda3/2022.10
+eval "$(conda shell.bash hook)"
+conda activate time_llm
+bash ./scripts/TimeLLM4_ECG.sh
+
+##DO NOT ADD/EDIT BEYOND THIS LINE##
+##Job monitor command to list the resource usage
+my-job-stats -a -n -s
+

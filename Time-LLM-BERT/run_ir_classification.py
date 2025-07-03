@@ -5,10 +5,9 @@ from accelerate import DistributedDataParallelKwargs
 from torch import nn, optim
 from torch.optim import lr_scheduler
 from tqdm import tqdm
-from utils.tools_without_mark import cal_accuracy
 from torchmetrics.classification import MulticlassAveragePrecision
 from sklearn.metrics import confusion_matrix, average_precision_score, ConfusionMatrixDisplay, precision_recall_curve, \
-    auc, roc_auc_score
+    auc, roc_auc_score, precision_score, recall_score, f1_score
 
 from models import Autoformer, DLinear, TimeLLM, TimeLLM_4, TimeLLM_5
 
@@ -23,14 +22,9 @@ os.environ['CURL_CA_BUNDLE'] = ''
 # os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:64"
 
 # from utils.tools import del_files, EarlyStopping, adjust_learning_rate, vali, load_content
-from utils.tools_without_mark_ir import del_files, EarlyStopping, adjust_learning_rate, vali, test, load_content
+from utils.tools_without_mark_ir import del_files, EarlyStopping, adjust_learning_rate, vali, test, load_content, cal_accuracy, one_hot
 
 parser = argparse.ArgumentParser(description='Time-LLM')
-
-fix_seed = 2021
-random.seed(fix_seed)
-torch.manual_seed(fix_seed)
-np.random.seed(fix_seed)
 
 # basic config
 parser.add_argument('--task_name', type=str, required=True, default='long_term_forecast',
@@ -46,6 +40,7 @@ parser.add_argument('--seed', type=int, default=2021, help='random seed')
 parser.add_argument('--data', type=str, required=True, default='ETTm1', help='dataset type')
 parser.add_argument('--root_path', type=str, default='./dataset', help='root path of the data file')
 parser.add_argument('--data_path', type=str, default='ETTh1.csv', help='data file')
+parser.add_argument('--data_split_path', type=str, help='data split path')
 parser.add_argument('--features', type=str, default='M',
                     help='forecasting task, options:[M, S, MS]; '
                          'M:multivariate predict multivariate, S: univariate predict univariate, '
@@ -61,8 +56,6 @@ parser.add_argument('--n', type=int, default=8000)
 parser.add_argument('--quantization', type=float, default=0.1, help="Quantization on the physionet dataset.")
 parser.add_argument('--classif', action='store_true', help="Include binary classification loss")
 parser.add_argument('--classify-pertp', action='store_true')
-parser.add_argument('--split_type', type=str, default='random', choices=['random', 'age', 'gender'],
-                        help='only use for P12 and P19')
 
 # forecasting task
 parser.add_argument('--seq_len', type=int, default=96, help='input sequence length')
@@ -114,6 +107,11 @@ parser.add_argument('--llm_layers', type=int, default=6)
 parser.add_argument('--percent', type=int, default=100)
 
 args = parser.parse_args()
+fix_seed = args.seed
+random.seed(fix_seed)
+torch.manual_seed(fix_seed)
+np.random.seed(fix_seed)
+
 ddp_kwargs = DistributedDataParallelKwargs(find_unused_parameters=True)
 deepspeed_plugin = DeepSpeedPlugin(hf_ds_config='./ds_config_zero2.json')
 accelerator = Accelerator(kwargs_handlers=[ddp_kwargs], deepspeed_plugin=deepspeed_plugin)
@@ -279,10 +277,12 @@ if args.is_training:
                     with torch.cuda.amp.autocast():
                         if args.output_attention:
                             # outputs = model(batch_x, x_mark_enc=None, x_dec=None, x_mark_dec=None)[0]["aligned_logits"]
-                            outputs = model(batch_x, observed_mask, x_mark_enc=None, x_dec=None, x_mark_dec=None)[0]
+                            # outputs = model(batch_x, observed_mask, x_mark_enc=None, x_dec=None, x_mark_dec=None)[0]
+                            outputs = model(batch_x, x_mark_enc=None, x_dec=None, x_mark_dec=None)[0]
                             # outputs = model((torch.cat((observed_data, observed_mask), 2), observed_tp), x_mark_enc=None, x_dec=None, x_mark_dec=None)[0]
                         else:
-                            outputs = model(batch_x, observed_mask, x_mark_enc=None, x_dec=None, x_mark_dec=None)
+                            # outputs = model(batch_x, observed_mask, x_mark_enc=None, x_dec=None, x_mark_dec=None)
+                            outputs = model(batch_x, x_mark_enc=None, x_dec=None, x_mark_dec=None)
                             # outputs = model((torch.cat((observed_data, observed_mask), 2), observed_tp), x_mark_enc=None, x_dec=None, x_mark_dec=None)
 
                         print("model output memory allocated:", torch.cuda.memory_allocated() / (1024 ** 3))
@@ -291,14 +291,16 @@ if args.is_training:
                         # f_dim = -1 if args.features == 'MS' else 0
                         # outputs = outputs[:, -args.pred_len:, f_dim:]
                         # batch_y = batch_y[:, -args.pred_len:, f_dim:].to(accelerator.device)
-                        loss = criterion(outputs, batch_y)
-                        train_loss.append(loss.item())
+                        # loss = criterion(outputs, batch_y)
+                        # train_loss.append(loss.item())
                 else:
                     if args.output_attention:
-                        outputs = model(batch_x, observed_mask, x_mark_enc=None, x_dec=None, x_mark_dec=None)[0]
+                        # outputs = model(batch_x, observed_mask, x_mark_enc=None, x_dec=None, x_mark_dec=None)[0]
+                        outputs = model(batch_x, x_mark_enc=None, x_dec=None, x_mark_dec=None)[0]
                         # outputs = model((torch.cat((observed_data, observed_mask), 2), observed_tp), x_mark_enc=None, x_dec=None, x_mark_dec=None)[0]
                     else:
-                        outputs = model(batch_x, observed_mask, x_mark_enc=None, x_dec=None, x_mark_dec=None)
+                        # outputs = model(batch_x, observed_mask, x_mark_enc=None, x_dec=None, x_mark_dec=None)
+                        outputs = model(batch_x, x_mark_enc=None, x_dec=None, x_mark_dec=None)
                         # outputs = model((torch.cat((observed_data, observed_mask), 2), observed_tp), x_mark_enc=None, x_dec=None, x_mark_dec=None)
 
                     print("model output memory allocated:", torch.cuda.memory_allocated() / (1024 ** 3))
@@ -307,9 +309,14 @@ if args.is_training:
                     # f_dim = -1 if args.features == 'MS' else 0
                     # outputs = outputs[:, -args.pred_len:, f_dim:]
                     # batch_y = batch_y[:, -args.pred_len:, f_dim:]
-                    print(f"outputs shape: {outputs.shape}, type: {outputs.dtype}")
-                    loss = criterion(outputs, batch_y)
-                    train_loss.append(loss.item())
+                print(f"outputs shape: {outputs.shape}, type: {outputs.dtype}")
+
+                if args.classify_pertp:
+                    outputs = outputs.reshape(-1, args.num_classes)
+                    batch_y = batch_y.argmax(-1).reshape(-1)
+            
+                loss = criterion(outputs, batch_y)
+                train_loss.append(loss.item())
 
                 train_trues.append(batch_y)
                 train_preds.append(outputs)
@@ -345,42 +352,87 @@ if args.is_training:
             # calculate accuracy
             train_accuracy = torch.mean((train_trues == train_predictions).float()).item()
             train_accuracies.append(train_accuracy)
-            # calculate AUROC
             train_trues = train_trues.detach().cpu().numpy()
-            train_auc = roc_auc_score(train_trues,
-                                      train_probs.detach().cpu().float().numpy()[:,
-                                      1]) if not args.classify_pertp else 0.
+            if args.data == 'P12' or args.data == 'P19' or args.data == 'eICU' or args.data == 'MIMIC':
+                # calculate AUROC
+                train_auc = roc_auc_score(train_trues,
+                                        train_probs.detach().cpu().float().numpy()[:,
+                                        1]) if not args.classify_pertp else 0.
 
-            # calculate AUPRC
-            # train_auprc = auprc_metric(args.num_classes, train_probs, train_trues)
-            # train_auprc = auprc_metric(train_probs, train_trues)
-            train_auprc = average_precision_score(train_trues, train_probs.detach().cpu().float().numpy()[:,
-                                                               1]) if not args.classify_pertp else 0.
-            train_auprcs.append(train_auprc)
+                # calculate AUPRC
+                # train_auprc = auprc_metric(args.num_classes, train_probs, train_trues)
+                # train_auprc = auprc_metric(train_probs, train_trues)
+                train_auprc = average_precision_score(train_trues, train_probs.detach().cpu().float().numpy()[:,
+                                                                1]) if not args.classify_pertp else 0.
+                train_auprcs.append(train_auprc)
 
-            train_loss = np.average(train_loss)
-            train_losses.append(train_loss)
-            print("before vali memory allocated:", torch.cuda.memory_allocated() / (1024 ** 3))
-            print("before vali memory reserved:", torch.cuda.memory_reserved() / (1024 ** 3))
-            vali_loss, vali_accuracy, vali_auc, vali_auprc = vali(args, accelerator, model, dim, vali_loader,
-                                                                  criterion, metric)
-            print("after vali memory allocated:", torch.cuda.memory_allocated() / (1024 ** 3))
-            print("after vali memory reserved:", torch.cuda.memory_reserved() / (1024 ** 3))
+                train_loss = np.average(train_loss)
+                train_losses.append(train_loss)
+                print("before vali memory allocated:", torch.cuda.memory_allocated() / (1024 ** 3))
+                print("before vali memory reserved:", torch.cuda.memory_reserved() / (1024 ** 3))
+                vali_loss, vali_accuracy, vali_auc, vali_auprc = vali(args, accelerator, model, dim, vali_loader,
+                                                                    criterion, metric)
+                print("after vali memory allocated:", torch.cuda.memory_allocated() / (1024 ** 3))
+                print("after vali memory reserved:", torch.cuda.memory_reserved() / (1024 ** 3))
 
-            vali_losses.append(vali_loss)
-            vali_accuracies.append(vali_accuracy)
-            vali_auprcs.append(vali_auprc)
-            test_loss, test_accuracy, test_auc, test_auprc = vali(args, accelerator, model, dim, test_loader,
-                                                                  criterion, metric)
-            test_losses.append(test_loss)
-            test_accuracies.append(test_accuracy)
-            test_auprcs.append(test_auprc)
-            accelerator.print(
-                "Epoch: {0} | Train Loss: {1:.7f} Train Acc: {2:.7f} Train AUROC: {3:.7f} Train AUPRC: {4:.7f} Vali Loss: {5:.7f} Vali Acc: {6:.7f} Vali AUROC: {7:.7f} Vali AUPRC: {8:.7f} Test Loss: {9:.7f} Test Acc: {10:.7f} Test AUROC: {11:.7f} Test AUPRC: {12:.7f}".format(
-                    epoch + 1, train_loss, train_accuracy, train_auc, train_auprc, vali_loss, vali_accuracy, vali_auc,
-                    vali_auprc, test_loss, test_accuracy, test_auc, test_auprc))
+                vali_losses.append(vali_loss)
+                vali_accuracies.append(vali_accuracy)
+                vali_auprcs.append(vali_auprc)
+                test_loss, test_accuracy, test_auc, test_auprc = vali(args, accelerator, model, dim, test_loader,
+                                                                    criterion, metric)
+                test_losses.append(test_loss)
+                test_accuracies.append(test_accuracy)
+                test_auprcs.append(test_auprc)
+                accelerator.print(
+                    "Epoch: {0} | Train Loss: {1:.7f} Train Acc: {2:.7f} Train AUROC: {3:.7f} Train AUPRC: {4:.7f} Vali Loss: {5:.7f} Vali Acc: {6:.7f} Vali AUROC: {7:.7f} Vali AUPRC: {8:.7f} Test Loss: {9:.7f} Test Acc: {10:.7f} Test AUROC: {11:.7f} Test AUPRC: {12:.7f}".format(
+                        epoch + 1, train_loss, train_accuracy, train_auc, train_auprc, vali_loss, vali_accuracy, vali_auc,
+                        vali_auprc, test_loss, test_accuracy, test_auc, test_auprc))
+            elif args.data == 'PAM' or args.data == 'activity':
+                train_auc = roc_auc_score(one_hot(train_trues),
+                                          train_probs.detach().cpu().float().numpy())
+                train_auprc = average_precision_score(one_hot(train_trues),
+                                                      train_probs.detach().cpu().float().numpy())
+                train_precision = precision_score(train_trues, train_probs.detach().cpu().float().numpy().argmax(1),
+                                                  average='macro', )
+                train_recall = recall_score(train_trues, train_probs.detach().cpu().float().numpy().argmax(1),
+                                            average='macro', )
+                train_F1 = 2 * (train_precision * train_recall) / (
+                        train_precision + train_recall)
+                
+                train_auprcs.append(train_auprc)
+                train_loss = np.average(train_loss)
+                train_losses.append(train_loss)
 
-            early_stopping(vali_loss, model, path)
+                vali_loss, vali_accuracy, vali_auc, vali_auprc, vali_precision, vali_recall, vali_F1 = vali(args, accelerator, model, dim, vali_loader, criterion, metric)
+
+                vali_losses.append(vali_loss)
+                vali_accuracies.append(vali_accuracy)
+                vali_auprcs.append(vali_auprc)
+
+                test_loss, test_accuracy, test_auc, test_auprc, test_precision, test_recall, test_F1 = vali(args, accelerator, model, dim, test_loader, criterion, metric)
+                
+                # print(type(train_loss), train_loss)
+                # print(type(train_auc), train_auc)
+                # print(type(train_auprc), train_auprc)
+                # print(type(train_precision), train_precision)
+                # print(type(train_recall), train_recall)
+                # print(type(train_F1), train_F1)
+                # print(type(vali_loss), vali_loss)
+                # print(type(vali_auc), vali_auc)
+                # print(type(vali_auprc), vali_auprc)
+                # print(type(vali_precision), vali_precision)
+                # print(type(vali_recall), vali_recall)
+                # print(type(vali_F1), vali_F1)
+
+                test_losses.append(test_loss)
+                test_accuracies.append(test_accuracy)
+                test_auprcs.append(test_auprc)
+                accelerator.print("Epoch: {0} | Train Loss: {1:.7f} Train Acc: {2:.7f} Train AUPRC: {3:.7f} Train AUC: {4:.7f} Train Precision: {5:.7f} Train Recall: {6:.7f} Train F1 score: {7:.7f} Vali Loss: {8:.7f} Vali Acc: {9:.7f} Vali AUPRC: {10:.7f} Vali AUC: {11:.7f} Vali Precision: {12:.7f} Vali Recall: {13:.7f} Vali F1 score: {14:.7f} Test Loss: {15:.7f} Test Acc: {16:.7f} Test AUPRC: {17:.7f} Test AUC: {18:.7f} Test Prcision: {19:.7f} Test Recall: {20:.7f} Test F1 score: {21:.7f}".format(epoch + 1, train_loss, train_accuracy, train_auprc, train_auc, train_precision, train_recall, train_F1, vali_loss, vali_accuracy, vali_auprc, vali_auc, vali_precision, vali_recall, vali_F1, test_loss, test_accuracy, test_auprc, test_auc, test_precision, test_recall, test_F1))
+
+            if args.data == 'P12' or args.data == 'P19' or args.data == 'eICU' or args.data == 'MIMIC':
+                early_stopping(-vali_auprc, model, path)
+            elif args.data == 'PAM' or args.data == 'activity':
+                early_stopping(-vali_accuracy, model, path)
             if early_stopping.early_stop:
                 accelerator.print("Early stopping")
                 break
@@ -437,7 +489,7 @@ if args.is_training:
         # criterion = nn.CrossEntropyLoss()
         # # mae_metric = nn.L1Loss()
         # metric = "accuracy"
-        test(args, accelerator, model, test_loader, dim, setting)
+        # test(args, accelerator, model, test_loader, dim, setting)
 else:
     ii = 0
     setting = '{}_{}_{}_{}_ft{}_sl{}_ll{}_pl{}_dm{}_nh{}_el{}_dl{}_df{}_fc{}_eb{}_{}_nc{}_{}'.format(
@@ -514,6 +566,8 @@ else:
         model = DLinear.Model(args).float()
     elif args.model == 'TimeLLM_4':
         model = TimeLLM_4.Model(args).float()
+    elif args.model == 'TimeLLM_5':
+        model = TimeLLM_5.Model(args).float()
     else:
         model = TimeLLM.Model(args).float()
 

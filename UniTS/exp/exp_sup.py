@@ -989,6 +989,7 @@ class Exp_All_Task(object):
                 try:
                     sample, task_id = data_loader_cycle.generate_fake_samples_for_batch(
                         data_loader_id, batch_size)  # 2 makes the memory larger
+                    print("task_data_config_list", self.task_data_config_list)
                     task_name = self.task_data_config_list[task_id][1]['task_name']
                     # Try running the function with the current batch size
                     print(task_id, task_name,

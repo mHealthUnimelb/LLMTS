@@ -181,9 +181,11 @@ if args.is_training:
                 accuraies.append(accuracy)
                 auprcs.append(auprc)
                 aucs.append(auc)
-            elif args.data == 'PAM':
-                accuracy, precision, recall, F1 = exp.test(setting)
+            elif args.data == 'PAM' or args.data == 'activity':
+                accuracy, auprc, auc, precision, recall, F1 = exp.test(setting)
                 accuraies.append(accuracy)
+                auprcs.append(auprc)
+                aucs.append(auc)
                 precisions.append(precision)
                 recalls.append(recall)
                 f1s.append(F1)
@@ -197,8 +199,10 @@ if args.is_training:
             print('accuracy:', np.mean(np.array(accuraies)))
             print('auprc:', np.mean(np.array(auprcs)))
             print('auc:', np.mean(np.array(aucs)))
-        elif args.data == 'PAM':
+        elif args.data == 'PAM' or args.data == 'activity':
             print('accuracy:', np.mean(np.array(accuraies)))
+            print('auprc:', np.mean(np.array(auprcs)))
+            print('auc:', np.mean(np.array(aucs)))
             print('precision:', np.mean(np.array(precisions)))
             print('recall:', np.mean(np.array(recalls)))
             print('F1 score:', np.mean(np.array(f1s)))
@@ -224,9 +228,11 @@ else:
             print('accuracy:', accuracy)
             print('auprc:', auprc)
             print('auc:', auc)
-        elif args.data == 'PAM':
-            accuracy, precision, recall, F1 = exp.test(setting, test=1)
+        elif args.data == 'PAM' or args.data == 'activity':
+            accuracy, auprc, auc, precision, recall, F1 = exp.test(setting, test=1)
             print('accuracy:', accuracy)
+            print('auprc:', auprc)
+            print('auc:', auc)
             print('precision:', precision)
             print('recall:', recall)
             print('F1 score:', F1)

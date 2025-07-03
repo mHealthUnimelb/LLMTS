@@ -203,10 +203,11 @@ class Raindrop_v2(nn.Module):
     """
 
     def __init__(self, d_inp=36, d_model=64, nhead=4, nhid=128, nlayers=2, dropout=0.3, max_len=215, d_static=9,
-                 MAX=100, perc=0.5, aggreg='mean', n_classes=2, global_structure=None, sensor_wise_mask=False, static=True):
+                 MAX=100, perc=0.5, aggreg='mean', n_classes=2, global_structure=None, sensor_wise_mask=False, static=True, dataset=None):
         super().__init__()
         from torch.nn import TransformerEncoder, TransformerEncoderLayer
         self.model_type = 'Transformer'
+        self.dataset = dataset
 
         self.global_structure = global_structure
         self.sensor_wise_mask = sensor_wise_mask
@@ -379,6 +380,11 @@ class Raindrop_v2(nn.Module):
 
         if static is not None:
             output = torch.cat([output, emb], dim=1)
+
+        if self.dataset == 'activity':
+            output = output.unsqueeze(1)
+            output = output.repeat(1, 50, 1)
+
         output = self.mlp_static(output)
 
         return output, distance, None

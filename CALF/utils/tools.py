@@ -29,6 +29,14 @@ def adjust_learning_rate(optimizer, epoch, args):
             param_group['lr'] = lr
         print('Updating learning rate to {}'.format(lr))
 
+def one_hot(y_):
+    # Function to encode output labels from number indexes
+    # e.g.: [[5], [0], [3]] --> [[0, 0, 0, 0, 0, 1], [1, 0, 0, 0, 0, 0], [0, 0, 0, 1, 0, 0]]
+    y_ = y_.reshape(len(y_))
+
+    y_ = [int(x) for x in y_]
+    n_values = np.max(y_) + 1
+    return np.eye(n_values)[np.array(y_, dtype=np.int32)]
 
 class EarlyStopping:
     def __init__(self, patience=7, verbose=False, delta=0):

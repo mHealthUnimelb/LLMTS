@@ -1,5 +1,5 @@
 CUDA_VISIBLE_DEVICES=0 python -u run.py \
-  --seed 42 \
+  --seed 123 \
   --task_name ir_classification \
   --is_training 1 \
   --root_path ./data/activity \
@@ -20,7 +20,7 @@ CUDA_VISIBLE_DEVICES=0 python -u run.py \
   --des 'Exp' \
   --itr 1 \
   --d_model 768 \
-  --learning_rate 0.0000000001 \
+  --learning_rate 0.001 \
   --loss 'CE' \
   --patch_size 16 \
   --patience 10 \
@@ -31,8 +31,8 @@ CUDA_VISIBLE_DEVICES=0 python -u run.py \
   --sim_coef -0.05 \
   --pool_size  1000 \
   --percent 100 \
-  --trend_length 96 \
-  --seasonal_length 96 \
+  --trend_length 24 \
+  --seasonal_length 24 \
   --num_classes 7 \
   --classif \
-  --classify-pertp
+  --classify-pertp \

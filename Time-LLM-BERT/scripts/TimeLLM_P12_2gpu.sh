@@ -1,10 +1,10 @@
 model_name=TimeLLM
 train_epochs=100
-learning_rate=0.0001
+learning_rate=0.000001
 llama_layers=6
 
 master_port=2047
-num_process=3
+num_process=2
 batch_size=16
 d_model=32
 d_ff=128
@@ -44,7 +44,6 @@ accelerate launch --multi_gpu --mixed_precision bf16 --num_processes $num_proces
   --n 8000 \
   --quantization 0.016 \
   --classif \
-  --split_type random
 
 #accelerate launch --multi_gpu --mixed_precision bf16 --num_processes $num_process --main_process_port $master_port run_main.py \
 #  --task_name long_term_forecast \

@@ -1032,3 +1032,31 @@ def context_based_split(X, is_pad, context_len: int):
     pad_by_sample = np.any(pad_new, axis=1)
 
     return Xnew[~pad_by_sample, :]
+
+class TensorForecastDataset(Dataset):
+    def __init__(self, data, seq_len, label_len, pred_len):
+        self.data = data.permute(0, 2, 1).float()            # (B,L,C)
+        self.seq_len, self.label_len, self.pred_len = seq_len, label_len, pred_len
+        self.L = self.data.shape[1]
+
+    def __len__(self):
+    #     return (self.L - self.seq_len - self.pred_len + 1) * self.data.shape[0]
+        return self.data.shape[0]
+
+    # def __getitem__(self, idx):
+    #     b = idx // (self.L - self.seq_len - self.pred_len + 1)
+    #     print("b", b)
+    #     s = idx %  (self.L - self.seq_len - self.pred_len + 1)
+    #     print("s", s)
+    #     e = s + self.seq_len
+    #     print("e", e)
+    #     enc_x = self.data[b, s:e]                            # (seq_len,C)
+    #     dec_y = self.data[b, e - self.label_len : e + self.pred_len]
+    #     return enc_x, dec_y
+
+    def __getitem__(self, idx):
+        seq_x = self.data[idx][:512]
+        seq_y = self.data[idx][512:]
+        seq_x_mark = torch.zeros_like(seq_x)
+        seq_y_mark = torch.zeros_like(seq_y)
+        return seq_x, seq_y, seq_x_mark, seq_y_mark

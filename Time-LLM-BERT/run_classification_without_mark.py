@@ -5,11 +5,11 @@ from accelerate import DistributedDataParallelKwargs
 from torch import nn, optim
 from torch.optim import lr_scheduler
 from tqdm import tqdm
-from utils.tools_without_mark import cal_accuracy
+from utils.tools_without_mark import cal_accuracy, one_hot
 from torchmetrics.classification import MulticlassAveragePrecision
-from sklearn.metrics import precision_recall_curve, auc
+from sklearn.metrics import precision_recall_curve, auc, average_precision_score
 
-from models import Autoformer, DLinear, TimeLLM
+from models import Autoformer, DLinear, TimeLLM, TimeLLM_4
 
 from data_provider.data_factory import data_provider
 import time
@@ -26,7 +26,7 @@ from utils.tools_without_mark import del_files, EarlyStopping, adjust_learning_r
 
 parser = argparse.ArgumentParser(description='Time-LLM')
 
-fix_seed = 2021
+fix_seed = 2024
 random.seed(fix_seed)
 torch.manual_seed(fix_seed)
 np.random.seed(fix_seed)
@@ -65,6 +65,7 @@ parser.add_argument('--seasonal_patterns', type=str, default='Monthly', help='su
 
 # classificaton task
 parser.add_argument('--num_classes', type=int, required=True, default=4, help='number of classes')
+parser.add_argument('--classify-pertp', action='store_true')
 
 # model define
 parser.add_argument('--enc_in', type=int, default=7, help='encoder input size')
@@ -121,7 +122,7 @@ train_auprcs = []
 vali_auprcs = []
 test_auprcs = []
 
-auprc_metric = MulticlassAveragePrecision(num_classes=args.num_classes, average="macro")
+# auprc_metric = MulticlassAveragePrecision(num_classes=args.num_classes, average="macro")
 
 # def auprc_metric(num_class, probs, target):
 #     probs = probs.detach().cpu().numpy()
@@ -173,6 +174,8 @@ if args.is_training:
             model = Autoformer.Model(args).float()
         elif args.model == 'DLinear':
             model = DLinear.Model(args).float()
+        elif args.model == 'TimeLLM_4':
+            model = TimeLLM_4.Model(args).float()
         else:
             model = TimeLLM.Model(args).float()
 
@@ -295,7 +298,7 @@ if args.is_training:
 
             train_preds = torch.cat(train_preds, 0)
             train_trues = torch.cat(train_trues, 0)
-            train_probs = torch.nn.functional.softmax(train_preds)
+            train_probs = torch.nn.functional.softmax(train_preds).float()
             train_predictions = torch.argmax(train_probs, dim=1)
             train_trues = train_trues.flatten()
             # calculate accuracy
@@ -303,7 +306,8 @@ if args.is_training:
             train_accuracies.append(train_accuracy)
             # calculate AUPRC
             # train_auprc = auprc_metric(args.num_classes, train_probs, train_trues)
-            train_auprc = auprc_metric(train_probs, train_trues)
+            # train_auprc = auprc_metric(train_probs, train_trues)
+            train_auprc = average_precision_score(one_hot(train_trues.detach().cpu().numpy()), train_probs.detach().cpu().numpy(), average='macro')            
             train_auprcs.append(train_auprc)
 
             train_loss = np.average(train_loss)
@@ -456,6 +460,8 @@ else:
         model = Autoformer.Model(args).float()
     elif args.model == 'DLinear':
         model = DLinear.Model(args).float()
+    elif args.model == 'TimeLLM_4':
+        model = TimeLLM_4.Model(args).float()
     else:
         model = TimeLLM.Model(args).float()
 

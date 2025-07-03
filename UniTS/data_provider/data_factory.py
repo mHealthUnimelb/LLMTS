@@ -1,9 +1,10 @@
 from data_provider.data_loader import Dataset_ETT_hour, Dataset_ETT_minute, Dataset_Custom, PSMSegLoader, \
-    MSLSegLoader, SMAPSegLoader, SMDSegLoader, SWATSegLoader, UEAloader, GLUONTSDataset
+    MSLSegLoader, SMAPSegLoader, SMDSegLoader, SWATSegLoader, UEAloader, GLUONTSDataset, TensorForecastDataset
 from data_provider.uea import collate_fn
 import torch
 from torch.utils.data import DataLoader, Subset
 from torch.utils.data.distributed import DistributedSampler
+import os
 
 data_dict = {
     'ETTh1': Dataset_ETT_hour,
@@ -20,6 +21,7 @@ data_dict = {
     'UEA': UEAloader,
     # datasets from gluonts package:
     "gluonts": GLUONTSDataset,
+    "custom_tensor": TensorForecastDataset,
 }
 
 
@@ -73,6 +75,22 @@ def data_provider(args, config, flag, ddp=False):  # args,
         return data_set, data_loader
 
     timeenc = 0 if config['embed'] != 'timeF' else 1
+
+    if 'custom_tensor' in config['data']:
+        if flag == 'train':
+            raw = torch.load(os.path.join(config['root_path'], config['dataset']+'_TRAIN.pt'))
+        elif flag == "test":
+            raw = torch.load(os.path.join(config['root_path'], config['dataset']+'_TEST.pt'))
+
+        dataset = TensorForecastDataset(
+        raw, config["seq_len"], config["label_len"], config["pred_len"])
+        data_loader = DataLoader(
+            dataset,
+            batch_size = batch_size,
+            shuffle = False,
+            num_workers = args.num_workers,
+            drop_last = False)
+        return dataset, data_loader
 
     if 'anomaly_detection' in config['task_name']:
         drop_last = False

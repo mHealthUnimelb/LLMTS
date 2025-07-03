@@ -13,6 +13,7 @@ from transformers import AdamW
 from torch.utils.data import Dataset, DataLoader
 from torch import optim
 import os
+from pathlib import Path
 import time
 import warnings
 import numpy as np
@@ -95,6 +96,69 @@ class Exp_ir_Classification(object):
         n_values = np.max(y_) + 1
         return np.eye(n_values)[np.array(y_, dtype=np.int32)]
 
+    # def assert_finite(self, t, name):
+    #     """
+    #     Raise an error if `t` contains NaN or ±Inf.
+    #     Also report how many of each kind were found.
+
+    #     Parameters
+    #     ----------
+    #     t : torch.Tensor
+    #         Tensor to check.
+    #     name : str, optional
+    #         A human-readable identifier for error messages.
+    #     """
+    #     # Booleans marking where the special values are
+    #     isnan = torch.isnan(t)
+    #     isposinf = torch.isposinf(t)
+    #     isneginf = torch.isneginf(t)
+
+    #     # Counts (convert to python ints for nice printing)
+    #     n_nan = int(isnan.sum())
+    #     n_posinf = int(isposinf.sum())
+    #     n_neginf = int(isneginf.sum())
+    #     n_total_inf = n_posinf + n_neginf
+
+    #     if n_nan or n_total_inf:
+    #         msg = (
+    #             f"{name} contains non-finite values → "
+    #             f"NaN: {n_nan}, +Inf: {n_posinf}, -Inf: {n_neginf}"
+    #         )
+    #         raise RuntimeError(msg)
+        
+    # def save_tensor(self, t, file_path, as_numpy):
+    #     """
+    #     Save a tensor to disk (PyTorch .pt or NumPy .npy).
+
+    #     Parameters
+    #     ----------
+    #     t : torch.Tensor
+    #         The tensor to save.
+    #     file_path : str | Path
+    #         Target file name *with* or *without* extension.
+    #         If no extension is given: `.pt` for PyTorch, `.npy` for NumPy.
+    #     as_numpy : bool, default False
+    #         If True → save as NumPy `.npy`; otherwise save with `torch.save(...)`.
+
+    #     Returns
+    #     -------
+    #     Path
+    #         The full path where the file was written.
+    #     """
+    #     file_path = Path(file_path)
+    #     if file_path.suffix == '':
+    #         file_path = file_path.with_suffix('.npy' if as_numpy else '.pt')
+
+    #     file_path.parent.mkdir(parents=True, exist_ok=True)
+
+    #     if as_numpy:
+    #         import numpy as np
+    #         np.save(file_path, t.detach().cpu().numpy())
+    #     else:
+    #         torch.save(t.detach().cpu(), file_path)
+
+    #     return file_path
+
     def train(self, setting):
         path = os.path.join(self.args.checkpoints, setting)
         if not os.path.exists(path):
@@ -143,9 +207,12 @@ class Exp_ir_Classification(object):
                     f_dim = -1 if self.args.features == 'MS' else 0
 
                 if self.args.classify_pertp:
+                    # self.assert_finite(outputs, "outputs")
                     outputs = outputs.reshape(-1, self.args.num_class)
                     batch_y = batch_y.argmax(-1).reshape(-1)
                 
+                # self.assert_finite(outputs, "outputs")
+
                 loss = self.train_criterion(outputs, batch_y.long())
 
                 train_loss.append(loss.item())
@@ -180,7 +247,12 @@ class Exp_ir_Classification(object):
 
             train_preds = torch.cat(train_preds, 0)
             train_trues = torch.cat(train_trues, 0)
+
+            # path = self.save_tensor(train_preds, f"debug/bad_logits", as_numpy=True)
+            # print(f"Saved offending logits to ➜ {path}")
+
             train_probs = torch.nn.functional.softmax(train_preds)
+            # self.assert_finite(train_probs, "train_probs")
             train_predictions = torch.argmax(train_probs, dim=1)
             train_trues = train_trues.flatten()
             # calculate AUPRC
@@ -215,8 +287,7 @@ class Exp_ir_Classification(object):
                     epoch + 1, train_steps, train_loss, vali_loss, sim_loss, train_accuracy, train_auprc, train_auc,
                     vali_accuracy, vali_auprc, vali_auc, test_accuracy, test_auprc, test_auc))
             elif self.args.data == 'PAM' or self.args.data == 'activity':
-                train_auc = roc_auc_score(self._one_hot(train_trues),
-                                          train_probs.detach().cpu().numpy())
+                train_auc = roc_auc_score(self._one_hot(train_trues), train_probs.detach().cpu().numpy())
                 train_auprc = average_precision_score(self._one_hot(train_trues),
                                                       train_probs.detach().cpu().numpy())
                 train_precision = precision_score(train_trues, train_probs.detach().cpu().numpy().argmax(1),
@@ -243,7 +314,7 @@ class Exp_ir_Classification(object):
                 # prev_best = early_stopping.best_score
                 early_stopping(-vali_auprc, self.model, path)
             elif self.args.data == 'PAM' or self.args.data == 'activity':
-                early_stopping(-vali_F1, self.model, path)
+                early_stopping(-vali_accuracy, self.model, path)
             if early_stopping.early_stop:
                 print("Early stopping")
                 break
@@ -425,6 +496,10 @@ class Exp_ir_Classification(object):
             f = open(os.path.join(folder_path, "result_classification.txt"), 'a')
             f.write(setting + "  \n")
             f.write('Accuracy:{}'.format(accuracy))
+            f.write('\n')
+            f.write('AUPRC:{}'.format(auprc))
+            f.write('\n')
+            f.write('AUC:{}'.format(auc))
             f.write('\n')
             f.write('Precision:{}'.format(precision))
             f.write('\n')

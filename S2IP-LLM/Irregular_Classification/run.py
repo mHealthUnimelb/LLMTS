@@ -2,8 +2,8 @@ import argparse
 import os
 import torch
 
-from exp.exp_long_term_forecasting import Exp_Long_Term_Forecast
 from exp.exp_ir_classification import Exp_ir_Classification
+from exp.exp_ir_forecasting import Exp_IR_Forecast
 
 import random
 import numpy as np
@@ -43,6 +43,7 @@ parser.add_argument('--seq_len', type=int, default=96, help='input sequence leng
 parser.add_argument('--label_len', type=int, default=48, help='start token length')
 parser.add_argument('--pred_len', type=int, default=96, help='prediction sequence length')
 parser.add_argument('--seasonal_patterns', type=str, default='Monthly', help='subset for M4')
+parser.add_argument('--history', type=int, default=24, help='history')
 
 # classification task
 parser.add_argument('--num_classes', type=int, default=2, help='number of class')
@@ -136,8 +137,8 @@ np.random.seed(fix_seed)
 print('Args in experiment:')
 print(args)
 
-if args.task_name == 'long_term_forecast':
-    Exp = Exp_Long_Term_Forecast
+if args.task_name == 'ir_forecast':
+    Exp = Exp_IR_Forecast
 elif args.task_name == 'ir_classification':
     Exp = Exp_ir_Classification
 
@@ -192,7 +193,7 @@ if args.is_training:
         best_model_path = path + '/' + 'checkpoint.pth'
         exp.model.load_state_dict(torch.load(best_model_path))
 
-        if args.task_name == 'long_term_forecast':
+        if args.task_name == 'ir_forecast':
             mse, mae = exp.test(setting)
             mses.append(mse)
             maes.append(mae)
@@ -213,7 +214,7 @@ if args.is_training:
 
         torch.cuda.empty_cache()
 
-    if args.task_name == 'long_term_forecast':
+    if args.task_name == 'ir_forecast':
         print('mse_means: ', np.array(mses),'mean: ', np.mean(np.array(mses)))
         print('mae_means: ', np.array(maes),'mean: ', np.mean(np.array(maes)))
     elif args.task_name == 'ir_classification':
@@ -221,7 +222,7 @@ if args.is_training:
             print('accuracy:', np.mean(np.array(accuraies)))
             print('auprc:', np.mean(np.array(auprcs)))
             print('auc:', np.mean(np.array(aucs)))
-        elif args.data == 'PAM':
+        elif args.data == 'PAM' or args.data == 'activity':
             print('accuracy:', np.mean(np.array(accuraies)))
             print('auprc:', np.mean(np.array(auprcs)))
             print('auc:', np.mean(np.array(aucs)))
@@ -253,7 +254,7 @@ else:
 
     exp = Exp(args)  # set experiments
     print('>>>>>>>testing : {}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<'.format(setting))
-    if args.task_name == 'long_term_forecast':
+    if args.task_name == 'ir_forecast':
         mse, mae = exp.test(setting, test=1)
         print("mse:", mse)
         print("mae:", mae)

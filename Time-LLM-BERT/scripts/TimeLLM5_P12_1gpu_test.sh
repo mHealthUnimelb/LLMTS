@@ -1,6 +1,6 @@
 model_name=TimeLLM_5
 train_epochs=100
-learning_rate=0.0001
+learning_rate=0.000001
 llama_layers=6
 
 master_port=2047
@@ -13,7 +13,7 @@ comment='TimeLLM-PhysioNet'
 
 accelerate launch --mixed_precision bf16 --num_processes $num_process --main_process_port $master_port run_ir_classification.py \
   --task_name classification \
-  --is_training 1 \
+  --is_training 0 \
   --root_path ./dataset/P12/ \
   --model_id P12_512_96 \
   --model $model_name \
@@ -44,7 +44,6 @@ accelerate launch --mixed_precision bf16 --num_processes $num_process --main_pro
   --n 8000 \
   --quantization 0.016 \
   --classif \
-  --split_type random
 
 #accelerate launch --multi_gpu --mixed_precision bf16 --num_processes $num_process --main_process_port $master_port run_main.py \
 #  --task_name long_term_forecast \

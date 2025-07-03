@@ -16,7 +16,7 @@ eval "$(conda shell.bash hook)"
 conda activate calf
 export CUDA_LAUNCH_BLOCKING=1
 
-seq_len=221
+seq_len=50
 model=CALF
 pred_len=0
 
@@ -32,7 +32,7 @@ python run.py \
     --label_len 0 \
     --pred_len $pred_len \
     --batch_size 128 \
-    --learning_rate 0.005 \
+    --learning_rate 0.0005 \
     --lradj type1 \
     --train_epochs 100 \
     --d_model 768 \

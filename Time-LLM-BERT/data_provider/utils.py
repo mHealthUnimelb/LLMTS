@@ -7,6 +7,7 @@ import numpy as np
 import os
 import random
 from data_provider.physionet import PhysioNet, get_data_min_max, variable_time_collate_fn2
+from data_provider.person_activity import PersonActivity
 from sklearn import model_selection
 from sklearn import metrics
 
@@ -647,9 +648,8 @@ def balanced_batch_sampler(train_data, true_labels, batch_size, n_classes):
     return upsampled_train_data
 
 
-def get_data(args, dataset, device, q, upsampling_batch, split_type, flag=1):
+def get_data(args, dataset, device, q, upsampling_batch, flag=1):
     print("upsampling_batch", upsampling_batch)
-    print("split_type", split_type)
     if dataset == 'P12':
         total_dataset = PhysioNet('data/physionet',
                                   quantization=q,
@@ -657,7 +657,7 @@ def get_data(args, dataset, device, q, upsampling_batch, split_type, flag=1):
                                   device=device)
         PT_dict = np.load('./data/P12data/processed_data/PTdict_list.npy', allow_pickle=True)
         # arr_outcomes = np.load('./data/P12data/processed_data/arr_outcomes.npy', allow_pickle=True)
-        idx_train, idx_val, idx_test = np.load('./data/P12data/splits/phy12_split1.npy', allow_pickle=True)
+        idx_train, idx_val, idx_test = np.load(args.data_split_path, allow_pickle=True)
     elif dataset == 'P19':
         PT_dict = np.load('../P19data/processed_data/PT_dict_list_6.npy', allow_pickle=True)
         labels_ts = np.load('../P19data/processed_data/labels_ts.npy', allow_pickle=True)
@@ -680,7 +680,20 @@ def get_data(args, dataset, device, q, upsampling_batch, split_type, flag=1):
 
         total_dataset = preprocess_PAM(PT_dict, arr_outcomes)
 
+    elif dataset == 'MIMIC':
+        total_dataset = torch.load('./data/MIMIC/mimic_classification/processed/mimic.pt', map_location='cpu')
+        total_dataset = [(record_id, tt, vals, mask, torch.tensor(label, dtype=torch.long)) for
+                         (record_id, tt, vals, mask, label) in total_dataset]
+
+    elif dataset == 'activity':
+        # args.pred_window = 1000
+        total_dataset = PersonActivity('data/activity/', n_samples = int(1e8), download=True, device = device)
+        # total_dataset = torch.load('./data/activiaty/processed/data.pt', map_location='cpu')
+
+
     print('len(total_dataset):', len(total_dataset))
+
+    global_tt = torch.unique(torch.cat([tpl[1] for tpl in total_dataset]), sorted=True)
 
     # if split_type == 'random':
     #     # Shuffle and split
@@ -706,6 +719,13 @@ def get_data(args, dataset, device, q, upsampling_batch, split_type, flag=1):
         print("train_data[0]:", train_data[0])
         print("val_data[0]:", val_data[0])
         print("test_data[0]:", test_data[0])
+    elif dataset == 'MIMIC' or dataset == 'activity':
+        print("seed", args.seed)
+        seen_data, test_data = model_selection.train_test_split(total_dataset, train_size=0.8, random_state=args.seed,
+                                                                shuffle=True)
+        train_data, val_data = model_selection.train_test_split(seen_data, train_size=0.75, random_state=args.seed,
+                                                                shuffle=False)
+        print("Dataset n_samples:", len(total_dataset), len(train_data), len(val_data), len(test_data))
     else:
         train_data = [total_dataset[i] for i in idx_train]
         print("train_data[0]:", train_data[0])
@@ -864,12 +884,17 @@ def get_data(args, dataset, device, q, upsampling_batch, split_type, flag=1):
 
                 train_data = train_data_upsamled
 
-            test_data_combined = variable_time_collate_fn(test_data, device, classify=args.classif, data_min=data_min,
-                                                          data_max=data_max)
-            train_data_combined = variable_time_collate_fn(train_data, device, classify=args.classif, data_min=data_min,
-                                                           data_max=data_max)
-            val_data_combined = variable_time_collate_fn(
-                val_data, device, classify=args.classif, data_min=data_min, data_max=data_max)
+            if dataset == 'activity':
+                test_data_combined = variable_time_collate_fn_activity(test_data, args, device, classify=args.classif, activity=True)
+                train_data_combined = variable_time_collate_fn_activity(train_data, args, device, classify=args.classif, activity=True)
+                val_data_combined = variable_time_collate_fn_activity(val_data, args, device, classify=args.classif, activity=True)
+            else:
+                test_data_combined = variable_time_collate_fn(test_data, args, device, classify=args.classif, data_min=data_min,
+                                                            data_max=data_max, global_tt=global_tt)
+                train_data_combined = variable_time_collate_fn(train_data, args, device, classify=args.classif, data_min=data_min,
+                                                            data_max=data_max, global_tt=global_tt)
+                val_data_combined = variable_time_collate_fn(
+                    val_data, args, device, classify=args.classif, data_min=data_min, data_max=data_max, global_tt=global_tt)
             print(train_data_combined[1].sum(
             ), val_data_combined[1].sum(), test_data_combined[1].sum())
             print(train_data_combined[0].size(), train_data_combined[1].size(),
@@ -925,8 +950,160 @@ def get_data(args, dataset, device, q, upsampling_batch, split_type, flag=1):
 
 
 
-def variable_time_collate_fn(batch, args, device=torch.device("cpu"), classify=False, activity=False,
-                             data_min=None, data_max=None):
+# def variable_time_collate_fn(batch, args, device=torch.device("cpu"), classify=False, activity=False,
+#                              data_min=None, data_max=None):
+#     """
+#     Expects a batch of time series data in the form of (record_id, tt, vals, mask, labels) where
+#       - record_id is a patient id
+#       - tt is a 1-dimensional tensor containing T time values of observations.
+#       - vals is a (T, D) tensor containing observed values for D variables.
+#       - mask is a (T, D) tensor containing 1 where values were observed and 0 otherwise.
+#       - labels is a list of labels for the current patient, if labels are available. Otherwise None.
+#     Returns:
+#       combined_tt: The union of all time observations.
+#       combined_vals: (M, T, D) tensor containing the observed values.
+#       combined_mask: (M, T, D) tensor containing 1 where values were observed and 0 otherwise.
+#     """
+#     D = batch[0][2].shape[1]
+#     # number of labels
+#     N = batch[0][-1].shape[1] if activity else 1
+#     len_tt = [ex[1].size(0) for ex in batch]
+#     maxlen = np.max(len_tt)
+#     enc_combined_tt = torch.zeros([len(batch), maxlen]).to(device)
+#     enc_combined_vals = torch.zeros([len(batch), maxlen, D]).to(device)
+#     enc_combined_mask = torch.zeros([len(batch), maxlen, D]).to(device)
+
+#     for b, (record_id, tt, vals, mask, labels) in enumerate(batch):
+#         currlen = tt.size(0)
+#         enc_combined_tt[b, :currlen] = tt.to(device)
+#         enc_combined_vals[b, :currlen] = vals.to(device)
+#         enc_combined_mask[b, :currlen] = mask.to(device)
+
+#     combined_tt, inverse_indices = torch.unique(torch.cat([ex[1] for ex in batch]), sorted=True, return_inverse=True)
+#     combined_tt = combined_tt.to(device)
+#     combined_tt = combined_tt.unsqueeze(0).expand(len(batch), -1)
+#     print(combined_tt.shape)
+
+#     offset = 0
+#     combined_vals = torch.zeros([len(batch), combined_tt.shape[1], D]).to(device)
+#     combined_mask = torch.zeros([len(batch), combined_tt.shape[1], D]).to(device)
+
+#     combined_labels = None
+#     N_labels = 1
+
+#     if classify:
+#         if activity:
+#             combined_labels = torch.zeros([len(batch), maxlen, N]).to(device)
+#         else:
+#             combined_labels = torch.zeros(len(batch), N_labels) + torch.tensor(float('nan'))
+#             combined_labels = combined_labels.to(device=device)
+
+#     for b, (record_id, tt, vals, mask, labels) in enumerate(batch):
+#         tt = tt.to(device)
+#         vals = vals.to(device)
+#         mask = mask.to(device)
+#         if labels is not None:
+#             labels = labels.to(device)
+
+#         indices = inverse_indices[offset:offset + len(tt)]
+#         offset += len(tt)
+
+#         combined_vals[b, indices] = vals
+#         combined_mask[b, indices] = mask
+
+#         if labels is not None:
+#             if classify:
+#                 if activity:
+#                     combined_labels[b, indices] = labels
+#                 else:
+#                     combined_labels[b] = labels
+
+#     if not activity:
+#         combined_vals, _, _ = normalize_masked_data(combined_vals, combined_mask,
+#                                                     att_min=data_min, att_max=data_max)
+#         enc_combined_vals, _, _ = normalize_masked_data(enc_combined_vals, enc_combined_mask,
+#                                                         att_min=data_min, att_max=data_max)
+
+#     if torch.max(combined_tt) != 0.:
+#         combined_tt = combined_tt / torch.max(combined_tt)
+#         enc_combined_tt = enc_combined_tt / torch.max(enc_combined_tt)
+
+#     combined_data = torch.cat(
+#         (combined_vals, combined_mask, combined_tt.unsqueeze(-1)), 2)
+
+#     if classify:
+#         return combined_data, combined_labels
+#     else:
+#         return combined_data
+
+def variable_time_collate_fn(batch, args, device=torch.device("cpu"), classify=False,
+                             data_min=None, data_max=None, global_tt=None):
+    """
+    Expects a batch of time series data in the form of (record_id, tt, vals, mask, labels) where
+        - record_id is a patient id
+        - tt is a 1-dimensional tensor containing T time values of observations.
+        - vals is a (T, D) tensor containing observed values for D variables.
+        - mask is a (T, D) tensor containing 1 where values were observed and 0 otherwise.
+        - labels is a list of labels for the current patient, if labels are available. Otherwise None.
+    Returns:
+        combined_tt: The union of all time observations.
+        combined_vals: (M, T, D) tensor containing the observed values.
+        combined_mask: (M, T, D) tensor containing 1 where values were observed and 0 otherwise.
+    """
+    # print("batch shape:", batch.shape)
+    D = batch[0][2].shape[1]
+    # combined_tt, inverse_indices = torch.unique(torch.cat([ex[1] for ex in batch]), sorted=True, return_inverse=True)
+    # combined_tt = combined_tt.to(device)
+    combined_tt = global_tt.to(device)
+    print("combined_tt shape", combined_tt.shape)
+
+    offset = 0
+    combined_vals = torch.zeros([len(batch), len(combined_tt), D]).to(device)
+    combined_mask = torch.zeros([len(batch), len(combined_tt), D]).to(device)
+
+    combined_labels = None
+    N_labels = 1
+
+    combined_labels = torch.zeros(len(batch), N_labels) + torch.tensor(float('nan'))
+    combined_labels = combined_labels.to(device=device)
+    # combined_tt = combined_tt.unsqueeze(0).expand(len(batch), -1)
+
+    for b, (record_id, tt, vals, mask, labels) in enumerate(batch):
+        tt = tt.to(device)
+        vals = vals.to(device)
+        mask = mask.to(device)
+        if labels is not None:
+            labels = labels.to(device)
+
+        # indices = inverse_indices[offset:offset + len(tt)]
+        # offset += len(tt)
+        indices = torch.searchsorted(combined_tt, tt)
+
+        combined_vals[b, indices] = vals
+        combined_mask[b, indices] = mask
+
+        if labels is not None:
+            combined_labels[b] = labels
+
+
+    combined_vals, _, _ = normalize_masked_data(combined_vals, combined_mask, att_min=data_min, att_max=data_max)
+
+    if torch.max(combined_tt) != 0.:
+        combined_tt = combined_tt / torch.max(combined_tt)
+
+    B = combined_vals.size(0)
+    T = combined_tt.size(0)
+    combined_tt = combined_tt.view(1, T, 1).expand(B, T, 1).to(device)
+    print("combined_tt shape", combined_tt.shape)
+    combined_data = torch.cat((combined_vals, combined_mask, combined_tt), 2)
+
+    if classify:
+        return combined_data, combined_labels
+    else:
+        return combined_data
+    
+
+def variable_time_collate_fn_activity(batch, args, device=torch.device("cpu"), classify=False, activity=True, data_min=None, data_max=None):
     """
     Expects a batch of time series data in the form of (record_id, tt, vals, mask, labels) where
       - record_id is a patient id
@@ -947,65 +1124,32 @@ def variable_time_collate_fn(batch, args, device=torch.device("cpu"), classify=F
     enc_combined_tt = torch.zeros([len(batch), maxlen]).to(device)
     enc_combined_vals = torch.zeros([len(batch), maxlen, D]).to(device)
     enc_combined_mask = torch.zeros([len(batch), maxlen, D]).to(device)
+    if classify:
+        if activity:
+            combined_labels = torch.zeros([len(batch), maxlen, N]).to(device)
+        else:
+            combined_labels = torch.zeros([len(batch), N]).to(device)
 
     for b, (record_id, tt, vals, mask, labels) in enumerate(batch):
         currlen = tt.size(0)
         enc_combined_tt[b, :currlen] = tt.to(device)
         enc_combined_vals[b, :currlen] = vals.to(device)
         enc_combined_mask[b, :currlen] = mask.to(device)
-
-    combined_tt, inverse_indices = torch.unique(torch.cat([ex[1] for ex in batch]), sorted=True, return_inverse=True)
-    combined_tt = combined_tt.to(device)
-    combined_tt = combined_tt.unsqueeze(0).expand(len(batch), -1)
-    print(combined_tt.shape)
-
-    offset = 0
-    combined_vals = torch.zeros([len(batch), combined_tt.shape[1], D]).to(device)
-    combined_mask = torch.zeros([len(batch), combined_tt.shape[1], D]).to(device)
-
-    combined_labels = None
-    N_labels = 1
-
-    if classify:
-        if activity:
-            combined_labels = torch.zeros([len(batch), maxlen, N]).to(device)
-        else:
-            combined_labels = torch.zeros(len(batch), N_labels) + torch.tensor(float('nan'))
-            combined_labels = combined_labels.to(device=device)
-
-    for b, (record_id, tt, vals, mask, labels) in enumerate(batch):
-        tt = tt.to(device)
-        vals = vals.to(device)
-        mask = mask.to(device)
-        if labels is not None:
-            labels = labels.to(device)
-
-        indices = inverse_indices[offset:offset + len(tt)]
-        offset += len(tt)
-
-        combined_vals[b, indices] = vals
-        combined_mask[b, indices] = mask
-
-        if labels is not None:
-            if classify:
-                if activity:
-                    combined_labels[b, indices] = labels
-                else:
-                    combined_labels[b] = labels
+        if classify:
+            if activity:
+                combined_labels[b, :currlen] = labels.to(device)
+            else:
+                combined_labels[b] = labels.to(device)
 
     if not activity:
-        combined_vals, _, _ = normalize_masked_data(combined_vals, combined_mask,
-                                                    att_min=data_min, att_max=data_max)
         enc_combined_vals, _, _ = normalize_masked_data(enc_combined_vals, enc_combined_mask,
                                                         att_min=data_min, att_max=data_max)
 
-    if torch.max(combined_tt) != 0.:
-        combined_tt = combined_tt / torch.max(combined_tt)
+    if torch.max(enc_combined_tt) != 0.:
         enc_combined_tt = enc_combined_tt / torch.max(enc_combined_tt)
 
     combined_data = torch.cat(
-        (combined_vals, combined_mask, combined_tt.unsqueeze(-1)), 2)
-
+        (enc_combined_vals, enc_combined_mask, enc_combined_tt.unsqueeze(-1)), 2)
     if classify:
         return combined_data, combined_labels
     else:

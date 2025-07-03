@@ -124,6 +124,14 @@ class StandardScaler():
     def inverse_transform(self, data):
         return (data * self.std) + self.mean
 
+def one_hot(y_):
+    # Function to encode output labels from number indexes
+    # e.g.: [[5], [0], [3]] --> [[0, 0, 0, 0, 0, 1], [1, 0, 0, 0, 0, 0], [0, 0, 0, 1, 0, 0]]
+    y_ = y_.reshape(len(y_))
+
+    y_ = [int(x) for x in y_]
+    n_values = np.max(y_) + 1
+    return np.eye(n_values)[np.array(y_, dtype=np.int32)]
 
 # def visual(true, preds=None, name='./pic/test.pdf'):
 #     """

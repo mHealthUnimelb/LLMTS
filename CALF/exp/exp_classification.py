@@ -1,6 +1,6 @@
 from data_provider.data_factory import data_provider
 from exp.exp_basic import Exp_Basic
-from utils.tools import EarlyStopping, adjust_learning_rate, cal_accuracy
+from utils.tools import EarlyStopping, adjust_learning_rate, cal_accuracy, one_hot
 from utils.cmLoss import cmLoss
 import torch
 import torch.nn as nn
@@ -114,22 +114,22 @@ class Exp_Classification(Exp_Basic):
     #     metric = MulticlassAveragePrecision(num_classes=self.args.num_class, average="macro")
     #     return metric(probs, target)
 
-    def _select_metric(self, probs, target):
-        probs = probs.detach().cpu().numpy()
-        target = target.detach().cpu().numpy()
+    # def _select_metric(self, probs, target):
+    #     probs = probs.detach().cpu().numpy()
+    #     target = target.detach().cpu().numpy()
 
-        # Initialize list to store AUPRC for each class
-        auprcs = []
+    #     # Initialize list to store AUPRC for each class
+    #     auprcs = []
 
-        # Compute AUPRC for each class
-        for i in range(self.args.num_class):
-            # For class `i`, the true labels are `1` if the actual label is `i`, else `0`
-            precision, recall, _ = precision_recall_curve(target == i, probs[:, i])
-            auprc = auc(recall, precision)
-            auprcs.append(auprc)
+    #     # Compute AUPRC for each class
+    #     for i in range(self.args.num_class):
+    #         # For class `i`, the true labels are `1` if the actual label is `i`, else `0`
+    #         precision, recall, _ = precision_recall_curve(target == i, probs[:, i])
+    #         auprc = auc(recall, precision)
+    #         auprcs.append(auprc)
 
-        # Return the average AUPRC across all classes
-        return np.mean(auprcs)
+    #     # Return the average AUPRC across all classes
+    #     return np.mean(auprcs)
 
     def train(self, setting):
         train_data, train_loader = self._get_data(flag='train')
@@ -219,10 +219,12 @@ class Exp_Classification(Exp_Basic):
             train_probs = torch.nn.functional.softmax(train_preds)
             train_predictions = torch.argmax(train_probs, dim=1)
             train_trues = train_trues.flatten()
-            # calculate AUPRC
-            train_auprc = self._select_metric(train_probs, train_trues)
-            # calculate accuracy
             correct = (train_predictions == train_trues).float()
+            train_trues = train_trues.detach().cpu().numpy()
+            # calculate AUPRC
+            # train_auprc = self._select_metric(train_probs, train_trues)
+            train_auprc = average_precision_score(one_hot(train_trues), train_probs.detach().cpu().numpy(), average='macro')
+            # calculate accuracy
             train_accuracy = correct.mean().item()
             self.train_auprcs.append(train_auprc)
             self.train_accuracies.append(train_accuracy)
@@ -293,9 +295,10 @@ class Exp_Classification(Exp_Basic):
         probs = torch.nn.functional.softmax(preds)  # (total_samples, num_classes) est. prob. for each class and sample
         predictions = torch.argmax(probs, dim=1).cpu().numpy()  # (total_samples,) int class index for each sample
         trues = trues.flatten()
-        auprc = self._select_metric(probs, trues)
+        # auprc = self._select_metric(probs, trues)
         trues = trues.cpu().numpy()
         accuracy = cal_accuracy(predictions, trues)
+        auprc = average_precision_score(one_hot(trues), probs.cpu().numpy(), average='macro')
 
         # Saving true labels and predictions
         np.savetxt('./results/vali_trues.txt', trues, fmt='%d')
@@ -304,7 +307,7 @@ class Exp_Classification(Exp_Basic):
         self.model.train()
         return total_loss, accuracy, auprc
 
-    def test(self, setting, test=0):
+    def test(self, args, setting, test=0):
         test_data, test_loader = self._get_data(flag='test')
         if test:
             print('loading model')
@@ -363,9 +366,10 @@ class Exp_Classification(Exp_Basic):
         probs = torch.nn.functional.softmax(preds)  # (total_samples, num_classes) est. prob. for each class and sample
         predictions = torch.argmax(probs, dim=1).cpu().numpy()  # (total_samples,) int class index for each sample
         trues = trues.flatten()
-        auprc = self._select_metric(probs, trues)
+        # auprc = self._select_metric(probs, trues)
         trues = trues.cpu().numpy()
         accuracy = cal_accuracy(predictions, trues)
+        auprc = average_precision_score(one_hot(trues), probs.cpu().numpy(), average='macro')
 
         self.visualize_embeddings(time_channedl_1_embedding, trues, title="time_channel_1_token_embedding",
                                   setting=setting)
