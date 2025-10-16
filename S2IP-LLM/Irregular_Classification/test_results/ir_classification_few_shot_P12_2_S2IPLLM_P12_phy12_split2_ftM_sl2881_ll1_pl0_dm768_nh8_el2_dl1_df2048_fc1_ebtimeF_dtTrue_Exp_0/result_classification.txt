@@ -1,0 +1,5 @@
+ir_classification_few_shot_P12_2_S2IPLLM_P12_phy12_split2_ftM_sl2881_ll1_pl0_dm768_nh8_el2_dl1_df2048_fc1_ebtimeF_dtTrue_Exp_0  
+Accuracy:0.8565471226021685
+AUPRC:0.29938233145874116
+AUC:0.723143786834141
+

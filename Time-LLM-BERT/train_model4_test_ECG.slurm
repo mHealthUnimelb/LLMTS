@@ -1,8 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name="time_llm"
 #SBATCH --account="punim2341"
-#SBATCH --partition=feit-gpu-a100
-#SBATCH --qos=feit
+#SBATCH --partition=gpu-a100-short
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --ntasks-per-node=1

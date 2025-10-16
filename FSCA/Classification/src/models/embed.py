@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.utils import weight_norm
 import math
-
+from models.mTAN_encoder import enc_mtan
 
 class PositionalEmbedding(nn.Module):
     def __init__(self, d_model, max_len=5000):
@@ -120,6 +120,33 @@ class DataEmbedding(nn.Module):
     def forward(self, x, x_mark):
         if x_mark is None:
             x = self.value_embedding(x) + self.position_embedding(x)
+        else:
+            x = self.value_embedding(
+                x) + self.temporal_embedding(x_mark) + self.position_embedding(x)
+        return self.dropout(x)
+    
+
+
+class DataEmbedding_mTAN(nn.Module):
+    def __init__(self, d_model, embed_type='fixed', freq='h', dropout=0.1, num_ref_points=256, num_encoder_heads=1, learn_emb=True, patch_len=16, stride=8):
+        super(DataEmbedding_mTAN, self).__init__()
+
+        # self.value_embedding = TokenEmbedding(c_in=c_in, d_model=d_model)
+        self.value_embedding = enc_mtan(1, torch.linspace(0, 1., num_ref_points), nhidden=d_model,
+                                embed_time=128, num_heads=num_encoder_heads, learn_emb=learn_emb, num_ref_points=num_ref_points, patch_len=patch_len, stride=stride)
+        self.position_embedding = PositionalEmbedding(d_model=d_model)
+        self.temporal_embedding = TemporalEmbedding(d_model=d_model, embed_type=embed_type,
+                                                    freq=freq) if embed_type != 'timeF' else TimeFeatureEmbedding(
+            d_model=d_model, embed_type=embed_type, freq=freq)
+        self.dropout = nn.Dropout(p=dropout)
+
+    def forward(self, x, time_steps, x_mark):
+        if x_mark is None:
+            enc_out = self.value_embedding(x, time_steps)
+            print("enc_out shape", enc_out.shape)
+            pos_emb = self.position_embedding(enc_out)
+            x = enc_out + pos_emb
+            # x = self.value_embedding(x) + self.position_embedding(x)
         else:
             x = self.value_embedding(
                 x) + self.temporal_embedding(x_mark) + self.position_embedding(x)

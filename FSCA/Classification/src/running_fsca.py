@@ -16,7 +16,7 @@ import torch
 from torch.utils.data import DataLoader
 import numpy as np
 import sklearn
-from sklearn.metrics import average_precision_score, precision_recall_curve, auc
+from sklearn.metrics import average_precision_score, precision_recall_curve, auc, roc_auc_score, precision_score, recall_score, f1_score
 
 from utils import utils, analysis
 from models.loss import l2_reg_loss
@@ -191,7 +191,7 @@ def validate(val_evaluator, tensorboard_writer, config, best_metrics, best_value
     logger.info("Evaluating on validation set ...")
     eval_start_time = time.time()
     with torch.no_grad():
-        aggr_metrics, per_batch = val_evaluator.evaluate(epoch, keep_all=True)
+        aggr_metrics, per_batch = val_evaluator.evaluate(epoch, keep_all=True, configs=config)
     eval_runtime = time.time() - eval_start_time
     logger.info("Validation runtime: {} hours, {} minutes, {} seconds\n".format(*utils.readable_time(eval_runtime)))
 
@@ -231,12 +231,12 @@ def validate(val_evaluator, tensorboard_writer, config, best_metrics, best_value
     return aggr_metrics, best_metrics, best_value
 
 
-def test(evaluator):
+def test(evaluator, config=None):
     """Perform a single, one-off testing on a testing object (initialized with a dataset)"""
 
     eval_start_time = time.time()
     with torch.no_grad():
-        aggr_metrics, per_batch = evaluator.evaluate(epoch_num=None, keep_all=True)
+        aggr_metrics, per_batch = evaluator.evaluate(epoch_num=None, keep_all=True, configs=config)
     eval_runtime = time.time() - eval_start_time
     print()
     print_str = 'Testing Summary: '
@@ -414,7 +414,7 @@ class SupervisedRunner(BaseRunner):
         else:
             self.classification = False
 
-    def train_epoch(self, epoch_num=None):
+    def train_epoch(self, epoch_num=None, configs=None):
 
         self.model = self.model.train()
 
@@ -424,12 +424,37 @@ class SupervisedRunner(BaseRunner):
         total_samples = 0  # total samples in epoch
 
         for i, batch in enumerate(self.dataloader):
+            if configs['data'] == 'P12' or configs['data'] == 'MIMIC' or configs['data'] == 'activity':
+                if configs['task_name'] == 'classification':
+                    X, targets = batch
+                    print("X shape", X.shape)
+                    print("target shape", targets.shape)
+                    X = X.to(self.device)
+                    if targets.dim() == 1:
+                        targets = targets.unsqueeze(1).to(self.device) # (batch, 1)
+                        print("target shape", targets.shape)
+                    observed_data, observed_mask, observed_tp = X[:, :, :configs['feature_dim']], X[:, :, configs['feature_dim']:2 * configs['feature_dim']], X[:, :, -1]
 
-            X, targets, padding_masks, IDs = batch
-            targets = targets.to(self.device)
-            # padding_masks = padding_masks.to(self.device)  # 0s: ignore
-            # regression: (batch_size, num_labels); classification: (batch_size, num_classes) of logits
-            predictions = self.model(X.to(self.device), padding_masks)
+                    # padding_masks = padding_masks.to(self.device)  # 0s: ignore
+                    # regression: (batch_size, num_labels); classification: (batch_size, num_classes) of logits
+                    predictions = self.model(observed_data, None)
+                elif configs['task_name'] == 'classification_mTAN_encoder':
+                    X, targets = batch
+                    X = X.to(self.device)
+                    if targets.dim() == 1:
+                        targets = targets.unsqueeze(1).to(self.device) # (batch, 1)
+                        print("target shape", targets.shape)
+                    observed_data, observed_mask, observed_tp = X[:, :, :configs['feature_dim']], X[:, :, configs['feature_dim']:2 * configs['feature_dim']], X[:, :, -1]
+
+                    # padding_masks = padding_masks.to(self.device)  # 0s: ignore
+                    # regression: (batch_size, num_labels); classification: (batch_size, num_classes) of logits
+                    predictions = self.model(torch.cat((observed_data, observed_mask), 2), observed_tp, None)
+            else:
+                X, targets, padding_masks, IDs = batch
+                targets = targets.to(self.device)
+                # padding_masks = padding_masks.to(self.device)  # 0s: ignore
+                # regression: (batch_size, num_labels); classification: (batch_size, num_classes) of logits
+                predictions = self.model(X.to(self.device), padding_masks)
 
             loss = self.loss_module(predictions, targets)  # (batch_size,) loss for each sample in the batch
             batch_loss = torch.sum(loss)
@@ -470,14 +495,38 @@ class SupervisedRunner(BaseRunner):
         trues = trues.flatten()
         correct = (preds == trues).float()
         trues = trues.detach().cpu().numpy()
-        auprc = average_precision_score(utils.one_hot(trues), probs.detach().cpu().numpy(), average='macro')
         accuracy = correct.mean().item()
         self.epoch_metrics['accuracy'] = accuracy
-        self.epoch_metrics['auprc'] = auprc
+
+        if configs['data'] == 'P12' or configs['data'] == 'P19' or configs['data'] == 'eICU' or configs['data'] == 'PhysioNet' or configs['data'] == 'MIMIC':
+            auroc = roc_auc_score(trues, probs.detach().cpu().numpy()[:, 1]) if not configs['classify_pertp'] else 0.
+            auprc = average_precision_score(trues, probs.detach().cpu().numpy()[:,
+                                            1]) if not configs['classify_pertp'] else 0.
+            self.epoch_metrics['auprc'] = auprc
+            self.epoch_metrics['auroc'] = auroc
+        elif configs['data'] == 'PAM' or configs['data'] == 'activity':
+            auroc = roc_auc_score(utils.one_hot(trues),
+                                    probs.detach().cpu().numpy())
+            auprc = average_precision_score(utils.one_hot(trues),
+                                            probs.detach().cpu().numpy())
+            precision = precision_score(trues, probs.detach().cpu().numpy().argmax(1),
+                                                  average='macro', )
+            recall = recall_score(trues, probs.detach().cpu().numpy().argmax(1),
+                                            average='macro', )
+            F1 = 2 * (precision * recall) / (
+                        precision + recall)
+            self.epoch_metrics['auprc'] = auprc
+            self.epoch_metrics['auroc'] = auroc
+            self.epoch_metrics['precision'] = precision
+            self.epoch_metrics['recall'] = recall
+            self.epoch_metrics['F1'] = F1
+        else:    
+            auprc = average_precision_score(utils.one_hot(trues), probs.detach().cpu().numpy(), average='macro')
+            self.epoch_metrics['auprc'] = auprc
 
         return self.epoch_metrics
 
-    def evaluate(self, epoch_num=None, keep_all=True):
+    def evaluate(self, epoch_num=None, keep_all=True, configs=None):
 
         self.model = self.model.eval()
 
@@ -488,12 +537,37 @@ class SupervisedRunner(BaseRunner):
 
         per_batch = {'target_masks': [], 'targets': [], 'predictions': [], 'metrics': [], 'IDs': []}
         for i, batch in enumerate(self.dataloader):
+            if configs['data'] == 'P12' or configs['data'] == 'MIMIC' or configs['data'] == 'activity':
+                if configs['task_name'] == 'classification':
+                    X, targets = batch
+                    print("X shape", X.shape)
+                    print("target shape", targets.shape)
+                    X = X.to(self.device)
+                    if targets.dim() == 1:
+                        targets = targets.unsqueeze(1).to(self.device) # (batch, 1)
+                        print("target shape", targets.shape)
+                    observed_data, observed_mask, observed_tp = X[:, :, :configs['feature_dim']], X[:, :, configs['feature_dim']:2 * configs['feature_dim']], X[:, :, -1]
 
-            X, targets, padding_masks, IDs = batch
-            targets = targets.to(self.device)
-            # padding_masks = padding_masks.to(self.device)  # 0s: ignore
-            # regression: (batch_size, num_labels); classification: (batch_size, num_classes) of logits
-            predictions = self.model(X.to(self.device), padding_masks)
+                    # padding_masks = padding_masks.to(self.device)  # 0s: ignore
+                    # regression: (batch_size, num_labels); classification: (batch_size, num_classes) of logits
+                    predictions = self.model(observed_data, None)
+                elif configs['task_name'] == 'classification_mTAN_encoder':
+                    X, targets = batch
+                    X = X.to(self.device)
+                    if targets.dim() == 1:
+                        targets = targets.unsqueeze(1).to(self.device) # (batch, 1)
+                        print("target shape", targets.shape)
+                    observed_data, observed_mask, observed_tp = X[:, :, :configs['feature_dim']], X[:, :, configs['feature_dim']:2 * configs['feature_dim']], X[:, :, -1]
+
+                    # padding_masks = padding_masks.to(self.device)  # 0s: ignore
+                    # regression: (batch_size, num_labels); classification: (batch_size, num_classes) of logits
+                    predictions = self.model(torch.cat((observed_data, observed_mask), 2), observed_tp, None)
+            else:
+                X, targets, padding_masks, IDs = batch
+                targets = targets.to(self.device)
+                # padding_masks = padding_masks.to(self.device)  # 0s: ignore
+                # regression: (batch_size, num_labels); classification: (batch_size, num_classes) of logits
+                predictions = self.model(X.to(self.device), padding_masks)
 
             loss = self.loss_module(predictions, targets)  # (batch_size,) loss for each sample in the batch
             batch_loss = torch.sum(loss).cpu().item()
@@ -504,7 +578,7 @@ class SupervisedRunner(BaseRunner):
             per_batch['targets'].append(targets.cpu().numpy())
             per_batch['predictions'].append(predictions.detach().cpu().numpy())
             per_batch['metrics'].append([loss.cpu().numpy()])
-            per_batch['IDs'].append(IDs)
+            # per_batch['IDs'].append(IDs)
 
             metrics = {"loss": mean_loss}
             if i % self.print_interval == 0:
@@ -535,6 +609,9 @@ class SupervisedRunner(BaseRunner):
             predictions = torch.argmax(probs, dim=1).cpu().numpy()  # (total_samples,) int class index for each sample
             probs = probs.cpu().numpy()
             targets = np.concatenate(per_batch['targets'], axis=0).flatten()
+            trues = torch.cat(trues, 0)
+            trues = trues.flatten()
+            trues = trues.cpu().numpy()
             class_names = np.arange(probs.shape[1])  # TODO: temporary until I decide how to pass class names
             metrics_dict = self.analyzer.analyze_classification(predictions, targets, class_names)
 
@@ -542,15 +619,35 @@ class SupervisedRunner(BaseRunner):
             self.epoch_metrics['precision'] = metrics_dict['prec_avg']  # average precision over all classes
 
             if self.model.num_classes == 2:
-                false_pos_rate, true_pos_rate, _ = sklearn.metrics.roc_curve(targets, probs[:, 1])  # 1D scores needed
-                self.epoch_metrics['AUROC'] = sklearn.metrics.auc(false_pos_rate, true_pos_rate)
+                if configs['data'] == 'P12' or configs['data'] == 'P19' or configs['data'] == 'eICU' or configs['data'] == 'PhysioNet' or configs['data'] == 'MIMIC':
+                    auroc = roc_auc_score(trues, probs[:, 1]) if not configs['classify_pertp'] else 0.
+                    auprc = average_precision_score(trues, probs[:,
+                                                    1]) if not configs['classify_pertp'] else 0.
+                    self.epoch_metrics['auprc'] = auprc
+                    self.epoch_metrics['auroc'] = auroc
+                else:
+                    false_pos_rate, true_pos_rate, _ = sklearn.metrics.roc_curve(targets, probs[:, 1])  # 1D scores needed
+                    self.epoch_metrics['AUROC'] = sklearn.metrics.auc(false_pos_rate, true_pos_rate)
 
-                prec, rec, _ = sklearn.metrics.precision_recall_curve(targets, probs[:, 1])
-                self.epoch_metrics['AUPRC'] = sklearn.metrics.auc(rec, prec)
-
+                    prec, rec, _ = sklearn.metrics.precision_recall_curve(targets, probs[:, 1])
+                    self.epoch_metrics['AUPRC'] = sklearn.metrics.auc(rec, prec)
+                    
             elif self.model.num_classes > 2:
-                auprc = average_precision_score(utils.one_hot(targets), probs, average='macro')
-                self.epoch_metrics['auprc'] = auprc
+                if configs['data'] == 'PAM' or configs['data'] == 'activity':
+                    auroc = roc_auc_score(utils.one_hot(trues), probs)
+                    auprc = average_precision_score(utils.one_hot(trues), probs)
+                    precision = precision_score(trues, probs.argmax(1), average='macro', )
+                    recall = recall_score(trues, probs.argmax(1), average='macro', )
+                    F1 = 2 * (precision * recall) / (
+                                precision + recall)
+                    self.epoch_metrics['auprc'] = auprc
+                    self.epoch_metrics['auroc'] = auroc
+                    self.epoch_metrics['precision'] = precision
+                    self.epoch_metrics['recall'] = recall
+                    self.epoch_metrics['F1'] = F1
+                else:
+                    auprc = average_precision_score(utils.one_hot(targets), probs, average='macro')
+                    self.epoch_metrics['auprc'] = auprc
 
         if keep_all:
             return self.epoch_metrics, per_batch

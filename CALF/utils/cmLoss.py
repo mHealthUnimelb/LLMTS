@@ -26,7 +26,7 @@ class cmLoss(nn.Module):
 
         self.feature_loss = loss_dict[feature_loss]
         self.output_loss = loss_dict[output_loss]
-        if task_name == "classification" and class_weights is not None:
+        if (task_name == "classification" or task_name == "classification_mTAN_encoder") and class_weights is not None:
             print("class_weights", class_weights)
             self.task_loss = nn.CrossEntropyLoss(weight=class_weights)
         else:
@@ -57,7 +57,7 @@ class cmLoss(nn.Module):
             output_loss = self.output_loss(outputs_time, outputs_text)
         elif self.task_name == "short_term_forecast":
             output_loss = self.output_loss(in_sample, freq_map, outputs_time, outputs_text, batch_y_mark)
-        elif self.task_name == "classification":
+        elif self.task_name == "classification" or self.task_name == "classification_mTAN_encoder":
             output_loss = self.output_loss(outputs_time, outputs_text)
         elif self.task_name == "imputation":
             output_loss = self.output_loss(outputs_time, outputs_text)
@@ -72,7 +72,7 @@ class cmLoss(nn.Module):
             task_loss = self.task_loss(outputs_time, batch_y)
         elif self.task_name == "short_term_forecast":
             task_loss = self.task_loss(in_sample, freq_map, outputs_time, batch_y, batch_y_mark)
-        elif self.task_name == "classification":
+        elif self.task_name == "classification" or self.task_name == "classification_mTAN_encoder":
             # if classify_pertp:
             #     task_loss = self.task_loss(outputs_time.reshape(-1, self.args.num_class), batch_y)
             task_loss = self.task_loss(outputs_time, batch_y)

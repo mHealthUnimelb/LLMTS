@@ -1,0 +1,5 @@
+ir_classification_few_shot_MIMIC_2_S2IPLLM_MIMIC_MIMIC_split2_ftM_sl2880_ll1_pl0_dm768_nh8_el2_dl1_df2048_fc1_ebtimeF_dtTrue_Exp_0  
+Accuracy:0.8802916751063399
+AUPRC:0.20468468023626438
+AUC:0.6946440182619822
+

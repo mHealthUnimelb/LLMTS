@@ -5,7 +5,7 @@ import torch.nn as nn
 
 from transformers import LlamaConfig, LlamaModel, LlamaTokenizer, GPT2Config, GPT2Model, GPT2Tokenizer, BertConfig, \
     BertModel, BertTokenizer
-from layers.Embed import PatchEmbedding
+# from layers.Embed import PatchEmbedding, PatchEmbedding_CALF_encoder
 import transformers
 from layers.StandardNorm import Normalize
 
@@ -204,8 +204,14 @@ class Model(nn.Module):
         print("description", self.description)
         self.dropout = nn.Dropout(configs.dropout)
 
-        self.patch_embedding = PatchEmbedding(
-            configs.d_model, self.patch_len, self.stride, configs.dropout)
+        # self.patch_embedding = PatchEmbedding(
+        #     configs.d_model, self.patch_len, self.stride, configs.dropout)
+        
+        # self.patch_embedding = PatchEmbedding_CALF_encoder(
+        #     configs.d_model, self.patch_len, self.stride, configs.dropout, configs.n_heads)
+        self.linear = nn.Linear(configs.seq_len, configs.llm_dim)
+        encoder_layer = nn.TransformerEncoderLayer(d_model=configs.d_model, nhead=configs.n_heads)
+        self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=1)
 
         # self.project_patch_embedding_layer = nn.Linear(configs.d_model, configs.llm_dim)
 
@@ -214,7 +220,7 @@ class Model(nn.Module):
         self.num_tokens = 1000
         self.mapping_layer = nn.Linear(self.vocab_size, self.num_tokens)
 
-        self.reprogramming_layer = ReprogrammingLayer(configs.d_model, configs.n_heads, self.d_ff, self.d_llm)
+        self.reprogramming_layer = ReprogrammingLayer(configs.llm_dim, configs.n_heads, self.d_ff, self.d_llm)
 
         self.patch_nums = int((configs.seq_len - self.patch_len) / self.stride + 2)
         # self.patch_nums = configs.total_length // configs.seq_len
@@ -318,8 +324,9 @@ class Model(nn.Module):
 
         B, T, N = x_enc.size() # B: batch size, T: sequence length, N: num features
         print(B, T, N)
+        n_vars = N
         x_enc = x_enc.permute(0, 2, 1).contiguous().reshape(B * N, T, 1)
-        print("x_enc shape after permute: ", x_enc.shape)
+        print("x_enc shape after permute: ", x_enc.shape) # [328, 2881, 1]
 
         min_values = torch.min(x_enc, dim=1)[0]
         max_values = torch.max(x_enc, dim=1)[0]
@@ -349,19 +356,22 @@ class Model(nn.Module):
         x_enc = x_enc.reshape(B, N, T).permute(0, 2, 1).contiguous()
 
         prompt = self.tokenizer(prompt, return_tensors="pt", padding=True, truncation=True, max_length=2048).input_ids
-        prompt_embeddings = self.llm_model.get_input_embeddings()(prompt.to(x_enc.device))  # (batch, prompt_token, dim)
+        prompt_embeddings = self.llm_model.get_input_embeddings()(prompt.to(x_enc.device))  # (batch * channel, prompt_token, dim)
 
         source_embeddings = self.mapping_layer(self.word_embeddings.permute(1, 0)).permute(1, 0)
 
         x_enc = x_enc.permute(0, 2, 1).contiguous()
-        print("x_enc shape: ", x_enc.shape) # (24, 2, 2500)
+        print("x_enc shape: ", x_enc.shape) # [8, 41, 2881]
 
-        time_enc_out, n_vars = self.patch_embedding(x_enc.to(torch.bfloat16))
-        print("n_vars: ", n_vars) # 2
-        print("enc_out shape: ", time_enc_out.shape) # (48, 312, 32)
+        # time_enc_out, n_vars = self.patch_embedding(x_enc.to(torch.bfloat16))
+        x_enc = x_enc.reshape(B * N, T, 1)
+        x_enc = self.linear(x_enc.to(torch.bfloat16))
+        time_enc_out = self.transformer_encoder(x_enc.transpose(0, 1)).transpose(0, 1)
+        # print("n_vars: ", n_vars) # 2
+        print("enc_out shape: ", time_enc_out.shape) # [8, 41, 768]
 
         aligned_enc_out = self.reprogramming_layer(time_enc_out, source_embeddings, source_embeddings)
-        print("enc_out shape: ", aligned_enc_out.shape) # (48, 312, 768)
+        print("enc_out shape: ", aligned_enc_out.shape) # [8, 41, 768]
 
         # time_enc_out = self.project_patch_embedding_layer(time_enc_out)
         # print("enc_out shape: ", time_enc_out.shape)

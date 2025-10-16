@@ -17,6 +17,11 @@ class Options(object):
         self.parser.add_argument('--patch_size', type=int, default=64, help='patch_size')
         self.parser.add_argument('--stride', type=int, default=64, help='stride')
 
+        # mTAN encoder
+        self.parser.add_argument('--num_ref_points', type=int, default=256, help='the number of reference points')
+        self.parser.add_argument('--num_encoder_heads', type=int, default=1, help='the number of heads for the encoder')
+        self.parser.add_argument('--learn_emb', default=True, action='store_true')
+
         ## Run from command-line arguments
         # I/O
         self.parser.add_argument('--output_dir', default='./gnn02_output',
@@ -55,6 +60,9 @@ class Options(object):
                                  help='dataloader threads. 0 for single-thread.')
         self.parser.add_argument('--seed', type=int, 
                                  help='Seed used for splitting sets. None by default, set to an integer for reproducibility')
+        self.parser.add_argument('--task_name', type=str, default='classification',
+                        help='task name, options:[classification, classification_mTAN_encoder]')
+        
         # Dataset
         self.parser.add_argument('--limit_size', type=float, default=None,
                                  help="Limit  dataset to specified smaller random sample, e.g. for rapid debugging purposes. "
@@ -90,6 +98,15 @@ class Options(object):
                             The columns correspond to features, rows correspond to mean, std or min, max.""")
         self.parser.add_argument('--subsample_factor', type=int,
                                  help='Sub-sampling factor used for long sequences: keep every kth sample')
+        self.parser.add_argument('--classify-pertp', action='store_true')
+        self.parser.add_argument('--n', type=int, default=8000)
+        self.parser.add_argument('--quantization', type=float, default=0.1, help="Quantization on the physionet dataset.")
+        self.parser.add_argument('--classif', action='store_true', help="Include binary classification loss")
+        self.parser.add_argument('--data', type=str, default='P12',
+                                 help="Dataset name")
+        self.parser.add_argument('--data_split_path', type=str, help='data split index file')
+        self.parser.add_argument('--feature_dim', type=int, default=41, help='the number of features')
+
         # Training process
         self.parser.add_argument('--task', choices={"imputation", "transduction", "classification", "regression"},
                                  default="imputation",

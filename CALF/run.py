@@ -75,6 +75,10 @@ if __name__ == '__main__':
                         help='time features encoding, options:[timeF, fixed, learned]')
     parser.add_argument('--activation', type=str, default='gelu', help='activation')
     parser.add_argument('--output_attention', action='store_true', help='whether to output attention in ecoder')
+    parser.add_argument('--patch_len', type=int, default=16, help='patch length')
+    parser.add_argument('--stride', type=int, default=8, help='stride')
+    parser.add_argument('--trend_length', type=int, default=24, help='trend_length')
+    parser.add_argument('--seasonal_length', type=int, default=96, help='seasonal_length')
 
     # optimization
     parser.add_argument('--num_workers', type=int, default=10, help='data loader num workers')

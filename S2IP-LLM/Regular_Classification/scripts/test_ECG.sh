@@ -3,7 +3,7 @@ CUDA_VISIBLE_DEVICES=0 python -u run.py \
   --loss 'CE' \
   --is_training 0 \
   --root_path ./data/ECG/ \
-  --data_path x_test_dropped_0.4.pkl \
+  --data_path x_test.pkl \
   --model_id ECG \
   --model S2IPLLM \
   --data ECG \

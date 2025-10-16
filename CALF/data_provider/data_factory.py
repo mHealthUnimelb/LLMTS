@@ -58,7 +58,7 @@ def data_provider(args, flag, vali=False):
             num_workers=args.num_workers,
             drop_last=drop_last)
         return data_set, data_loader
-    elif args.task_name == 'classification':
+    elif args.task_name == 'classification' or args.task_name == 'classification_mTAN_encoder':
         if args.data == 'P12' or args.data == 'P19' or args.data == 'PAM' or args.data == 'MIMIC' or args.data == 'activity':
             data_set = Data(args=args, dataset=args.data, device=torch.device("cpu"), q=args.quantization, upsampling_batch=False)
             return data_set, None

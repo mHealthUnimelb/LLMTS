@@ -1,6 +1,6 @@
 import os
 import torch
-from models import CALF
+from models import CALF, CALF_TimeLLM_encoder, CALF_S2IP_encoder, CALF_mTAN_encoder, CALF_patch, CALF_mTAN_encoder_channel_independent
 
 
 class Exp_Basic(object):
@@ -8,6 +8,11 @@ class Exp_Basic(object):
         self.args = args
         self.model_dict = {
             "CALF": CALF,
+            "CALF_TimeLLM_encoder": CALF_TimeLLM_encoder,
+            "CALF_S2IP_encoder": CALF_S2IP_encoder,
+            "CALF_mTAN_encoder": CALF_mTAN_encoder,
+            "CALF_patch": CALF_patch,
+            "CALF_mTAN_encoder_channel_independent": CALF_mTAN_encoder_channel_independent,
         }
         self.device = self._acquire_device()
         self.model = self._build_model().to(self.device)

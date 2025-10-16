@@ -15,6 +15,8 @@ from datasets import utils
 import torch
 from torch.utils.data import Dataset
 
+from datasets.utils import get_data, get_data_mTAN
+
 logger = logging.getLogger('__main__')
 
 
@@ -479,7 +481,38 @@ class Dataset_ECG(Dataset):
         return len(self.x_data)
     
 
+class Dataset_P12(Dataset):
+    def __init__(self, args=None, root_path=None, dataset='P12', device=torch.device("cpu"), q=0.016, upsampling_batch=False):
+        if args['task_name'] == 'classification_mTAN_encoder':
+            print(args['task_name'])
+            self.data_objects = get_data_mTAN(args, dataset, device, q, upsampling_batch)
+        else:
+            self.data_objects = get_data(args, dataset, device, q, upsampling_batch)
+            self.max_seq_len = args['seq_len']
+        self.class_names = ["survival", "death"]
+
+class Dataset_MIMIC(Dataset):
+    def __init__(self, args=None, root_path=None, dataset='MIMIC', device=torch.device("cpu"), q=0.016, upsampling_batch=False):
+        if args['task_name'] == 'classification_mTAN_encoder':
+            self.data_objects = get_data_mTAN(args, dataset, device, q, upsampling_batch)
+        else:
+            self.data_objects = get_data(args, dataset, device, q, upsampling_batch)
+            self.max_seq_len = args['seq_len']
+        self.class_names = [0, 1]
+
+class Dataset_activity(Dataset):
+    def __init__(self, args=None, root_path=None, dataset='activity', device=torch.device("cpu"), q=0.016, upsampling_batch=False):
+        if args['task_name'] == 'classification_mTAN_encoder':
+            self.data_objects = get_data_mTAN(args, dataset, device, q, upsampling_batch)
+        else:
+            self.data_objects = get_data(args, dataset, device, q, upsampling_batch)
+            self.max_seq_len = args['seq_len']
+        self.class_names = [0, 1, 2, 3, 4, 5, 6]    
+
 data_factory = {'weld': WeldData,
                 'tsra': TSRegressionArchive,
                 'pmu': PMUData,
-                'ECG': Dataset_ECG}
+                'ECG': Dataset_ECG,
+                'P12': Dataset_P12,
+                'MIMIC': Dataset_MIMIC,
+                'activity': Dataset_activity,}

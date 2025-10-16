@@ -244,6 +244,7 @@ def main():
     parser.add_argument('--data_path', type=str, default='path/to/datasets')
     parser.add_argument('--quantization', type=float, default=0.016,
                         help="Quantization on the physionet dataset.")
+    parser.add_argument('--percent', type=int, default=None)
 
     parser.add_argument('--epoch', type=int, default=20)
     parser.add_argument('--batch_size', type=int, default=2)
@@ -446,8 +447,8 @@ def main():
     opt.log = opt.log + "_seed" + str(seed) + '.log'
 
     if opt.save_path is not None:
-        opt.save_res = opt.save_path + save_name + '_seed' + str(opt.seed)
-        save_path = opt.save_path + save_name + '_seed' + str(opt.seed) + '.h5'
+        opt.save_res = opt.save_path + save_name + '_seed' + str(opt.seed) + f'_{opt.percent}percent'
+        save_path = opt.save_path + save_name + '_seed' + str(opt.seed) + f'_{opt.percent}percent' + '.h5'
     else:
         save_path = None
     

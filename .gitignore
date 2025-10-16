@@ -11,6 +11,7 @@
 /CALF/slurm-*
 /CALF/checkpoints/
 /CALF/datasets/
+/CALF/data/
 /CALF_copy/slurm-*
 /CALF_copy/datasets/
 /CALF_copy/checkpoints/

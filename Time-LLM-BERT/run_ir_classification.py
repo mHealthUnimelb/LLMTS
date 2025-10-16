@@ -9,7 +9,7 @@ from torchmetrics.classification import MulticlassAveragePrecision
 from sklearn.metrics import confusion_matrix, average_precision_score, ConfusionMatrixDisplay, precision_recall_curve, \
     auc, roc_auc_score, precision_score, recall_score, f1_score
 
-from models import Autoformer, DLinear, TimeLLM, TimeLLM_4, TimeLLM_5
+from models import Autoformer, DLinear, TimeLLM, TimeLLM_4, TimeLLM_5, TimeLLM_encoder_CALF
 
 from data_provider.data_factory import data_provider
 import time
@@ -194,6 +194,8 @@ if args.is_training:
             model = TimeLLM_4.Model(args).float()
         elif args.model == 'TimeLLM_5':
             model = TimeLLM_5.Model(args).float()
+        elif args.model == 'TimeLLM_encoder_CALF':
+            model = TimeLLM_encoder_CALF.Model(args).float()
         else:
             model = TimeLLM.Model(args).float()
 
@@ -568,6 +570,8 @@ else:
         model = TimeLLM_4.Model(args).float()
     elif args.model == 'TimeLLM_5':
         model = TimeLLM_5.Model(args).float()
+    elif args.model == 'TimeLLM_encoder_CALF':
+        model = TimeLLM_encoder_CALF.Model(args).float()
     else:
         model = TimeLLM.Model(args).float()
 

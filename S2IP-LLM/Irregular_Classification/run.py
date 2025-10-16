@@ -103,7 +103,7 @@ parser.add_argument('--gpt_layers', type=int, default=6)
 parser.add_argument('--ln', type=int, default=0)
 parser.add_argument('--mlp', type=int, default=0)
 parser.add_argument('--weight', type=float, default=0)
-parser.add_argument('--percent', type=int, default=5)
+parser.add_argument('--percent', type=int, default=None)
 parser.add_argument('--pretrained', action='store_false',help='use finetuned GPT2',default=True)
 
 

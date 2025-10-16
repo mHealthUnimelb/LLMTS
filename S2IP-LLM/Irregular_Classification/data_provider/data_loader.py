@@ -13,7 +13,7 @@ from tqdm import tqdm
 from joblib import Parallel, delayed
 from data_provider.physionet import PhysioNet, get_data_min_max, variable_time_collate_fn2
 from sklearn import model_selection
-from data_provider.utils import get_data
+from data_provider.utils import get_data, get_data_mTAN
 
 warnings.filterwarnings('ignore')
 
@@ -622,18 +622,27 @@ class Dataset_Custom(Dataset):
 
 class Dataset_P12(Dataset):
     def __init__(self, args=None, root_path=None, dataset='P12', device=torch.device("cpu"), q=0.016, upsampling_batch=True):
-        self.data_objects = get_data(args, dataset, device, q, upsampling_batch)
+        if args.task_name == 'ir_classification_mTAN':
+            self.data_objects = get_data_mTAN(args, dataset, device, q, upsampling_batch)
+        else:
+            self.data_objects = get_data(args, dataset, device, q, upsampling_batch)
         self.class_names = ["survival", "death"]
 
 
 class Dataset_MIMIC(Dataset):
     def __init__(self, args=None, root_path=None, dataset='MIMIC', device=torch.device("cpu"), q=0.016, upsampling_batch=False):
-        self.data_objects = get_data(args, dataset, device, q, upsampling_batch)
+        if args.task_name == 'ir_classification_mTAN':
+            self.data_objects = get_data_mTAN(args, dataset, device, q, upsampling_batch)
+        else:
+            self.data_objects = get_data(args, dataset, device, q, upsampling_batch)
         self.class_names = [0, 1]
 
 class Dataset_activity(Dataset):
     def __init__(self, args=None, root_path=None, dataset='activity', device=torch.device("cpu"), q=0.016, upsampling_batch=False):
-        self.data_objects = get_data(args, dataset, device, q, upsampling_batch)
+        if args.task_name == 'ir_classification_mTAN':
+            self.data_objects = get_data_mTAN(args, dataset, device, q, upsampling_batch)
+        else:
+            self.data_objects = get_data(args, dataset, device, q, upsampling_batch)
         self.class_names = [0, 1, 2, 3, 4, 5, 6]
 
 

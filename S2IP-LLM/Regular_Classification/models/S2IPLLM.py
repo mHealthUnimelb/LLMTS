@@ -194,6 +194,7 @@ class Model(nn.Module):
         sim = outs['similarity']
         prompt_key = outs['prompt_key']
         simlarity_loss = outs['reduce_sim']
+        total_prompt_len = outs['total_prompt_len']
 
         last_embedding = self.gpt2(inputs_embeds=prompted_embedding).last_hidden_state
         print("last_embedding shape: ", last_embedding.shape)  # [249 (batch_size*feature_dim), 364, 768]
@@ -225,5 +226,8 @@ class Model(nn.Module):
 
         res = dict()
         res['simlarity_loss'] = simlarity_loss
+        res['similarity'] = sim
+        res['prompted_embedding'] = prompted_embedding
+        res['total_prompt_len'] = total_prompt_len
 
         return logits, res

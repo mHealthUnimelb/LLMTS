@@ -71,7 +71,7 @@ def data_provider(args, flag):
             collate_fn=lambda x: collate_fn(x, max_len=args.seq_len)
         )
         return data_set, data_loader
-    elif args.task_name == 'ir_classification':
+    elif args.task_name == 'ir_classification' or args.task_name == 'ir_classification_mTAN':
         if args.data == 'P12' or args.data == 'P19' or args.data == 'PAM' or args.data == 'MIMIC' or args.data == 'activity':
             data_set = Data(args=args, dataset=args.data, device=torch.device("cpu"), q=args.quantization, upsampling_batch=False)
             return data_set, None

@@ -77,6 +77,7 @@ class Exp_IR_Classification(Exp_Basic):
         self.args.dim = self.all_data.data_objects["input_dim"]
         # model init
         model = self.model_dict[self.args.model].Model(self.args, self.device).float()
+        print("model", model)
         if self.args.use_multi_gpu and self.args.use_gpu:
             model = nn.DataParallel(model, device_ids=self.args.device_ids)
         return model

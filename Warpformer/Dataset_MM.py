@@ -757,6 +757,13 @@ def get_data(args, dataset, device, q=0.016, upsampling_batch=True):
         test_data = [total_dataset[i] for i in idx_test]
         print("test_data[0]:", test_data[0])
 
+    # few-shot learning
+    if args.percent is not None:
+        print('original train data length', len(train_data))
+        subset_len = int(len(train_data) * (args.percent/100))
+        train_data = train_data[:subset_len]
+        print('train data length', len(train_data))
+
     # tt: time steps, vals: observed values, mask: which values are observed
     record_id, tt, vals, mask, labels = train_data[0]
 

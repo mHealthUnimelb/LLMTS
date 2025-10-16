@@ -35,7 +35,7 @@ def data_provider(args, flag):
         batch_size = args.batch_size
         freq = args.freq
 
-    if args.task_name == 'classification':
+    if args.task_name == 'classification' or args.task_name == 'classification_mTAN_encoder':
         if args.data == 'P12' or args.data == 'P19' or args.data == 'PAM' or args.data == 'MIMIC' or args.data == 'activity':
             data_set = Data(args=args, dataset=args.data, device=torch.device("cpu"), q=args.quantization,
                             upsampling_batch=False)

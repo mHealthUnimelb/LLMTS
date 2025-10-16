@@ -34,7 +34,7 @@ CUDA_VISIBLE_DEVICES=0 python src/main_gnn_fsca_ecg.py \
     --lr=0.001 \
     --model=FSCA \
     --root_path /data/gpfs/projects/punim2341/feixiangz/CALF/datasets/ECG/ \
-    --data_path x_test_dropped_0.7.pkl \
+    --data_path x_test_dropped_0.9.pkl \
     --optimizer=RAdam \
     --output_dir=experiments/ \
     --patch_size_stride="16 8" \

@@ -4,7 +4,7 @@ from utils.tools import EarlyStopping, adjust_learning_rate, visual, adjust_mode
 from utils.metrics import metric
 import torch
 import torch.nn as nn
-from models import S2IPLLM
+from models import S2IPLLM, S2IPLLM_TimeLLM_encoder, S2IPLLM_CALF_encoder
 from torch.nn.utils import clip_grad_norm_
 from utils.losses import mape_loss, mase_loss, smape_loss
 
@@ -22,6 +22,9 @@ from sklearn.utils.class_weight import compute_class_weight
 
 from tqdm import tqdm
 
+from transformers.models.gpt2.modeling_gpt2 import GPT2Model
+from transformers import GPT2Tokenizer
+
 warnings.filterwarnings('ignore')
 
 
@@ -30,7 +33,8 @@ class Exp_ir_Classification(object):
         self.args = args
         self.model_dict = {
             'S2IPLLM': S2IPLLM,
-
+            'S2IPLLM_TimeLLM_encoder': S2IPLLM_TimeLLM_encoder,
+            'S2IPLLM_CALF_encoder': S2IPLLM_CALF_encoder,
         }
 
         self.device = torch.device('cuda:0')
@@ -354,6 +358,7 @@ class Exp_ir_Classification(object):
                         outputs = self.model(batch_x)[0]
                     else:
                         outputs, res = self.model(batch_x)
+                
                 f_dim = -1 if self.args.features == 'MS' else 0
 
                 if self.args.classify_pertp:
@@ -407,6 +412,42 @@ class Exp_ir_Classification(object):
         preds = []
         trues = []
 
+        sim_bank = []
+        # define 10 wrods used for drawing similarity heat map
+        words = ["Trend", "seasonality", "cyclicity", "rise", "peak", "pattern", "shift", "position",
+                    "irregular", "missing", "inconsistent", "discontinuous", "heart", "period", "echo",
+                    "arm", "key", "mint"]
+        # Store the word embeddings
+        word_embeddings = []
+        # Load GPT-2 tokenizer and model
+        tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
+        gpt2_model = GPT2Model.from_pretrained("gpt2")
+        # Access the embedding layer of GPT-2
+        token_embeddings = gpt2_model.get_input_embeddings()
+        # Find the token IDs for the specified words and compute the mean embedding
+        for word in words:
+            token_ids = tokenizer(word, add_special_tokens=False)['input_ids']  # Token IDs for the word
+
+            # Print the tokens and their IDs
+            tokens = tokenizer.convert_ids_to_tokens(token_ids)
+            print(f"Word: {word}, Tokens: {tokens}, Token IDs: {token_ids}")
+
+            # Get embeddings for each token
+            token_embeddings_for_word = token_embeddings(torch.tensor(token_ids))
+
+            # Compute the mean embedding for the word if it has multiple tokens
+            mean_embedding = token_embeddings_for_word.mean(dim=0)
+            # mean_embedding = token_embeddings_for_word.max(dim=0).values
+            # mean_embedding = token_embeddings_for_word[0]
+
+            # Append the mean embedding to the list
+            word_embeddings.append(mean_embedding)
+        # Convert the list of tensors to a single tensor
+        word_embeddings = torch.stack(word_embeddings).to(device='cuda')
+        print(word_embeddings.shape) # (len(words), 768)
+        word_embeddings_norm = nn.functional.normalize(word_embeddings, dim=-1)
+
+
         # sim_matrix = []
         # input_embedding = []
         # prompted_embedding = []
@@ -432,6 +473,16 @@ class Exp_ir_Classification(object):
 
                     else:
                         outputs, res = self.model(batch_x)
+
+                print("prompted_embedding shape", res["prompted_embedding"].shape)
+                batched_prompt = res["prompted_embedding"][:, :res["total_prompt_len"]]
+                print("batched_prompt shape", batched_prompt.shape) # [615, 4, 768]
+                prompt_emb = batched_prompt[0]
+                # similarity between prompt_emb and predefined words
+                prompt_emb_norm = nn.functional.normalize(prompt_emb, dim=-1)
+                sim = word_embeddings_norm @ prompt_emb_norm.T # (words_len, prompt_len)
+                sim_bank.append(sim)
+                print("sim", sim)
 
                 f_dim = -1 if self.args.features == 'MS' else 0
 
@@ -509,6 +560,11 @@ class Exp_ir_Classification(object):
             f.write('\n')
             f.write('\n')
             f.close()
+
+        # save similarity
+        if sim_bank:
+            sim_matrix = torch.cat(sim_bank, 0)
+            np.save(folder_path + 'sim_matrix.npy', sim_matrix.cpu().numpy())
 
         # np.save(folder_path + 'metrics.npy', np.array([mae, mse, rmse, mape, mspe]))
         # np.save(folder_path + 'pred.npy', preds)
