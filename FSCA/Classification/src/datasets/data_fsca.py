@@ -484,7 +484,6 @@ class Dataset_ECG(Dataset):
 class Dataset_P12(Dataset):
     def __init__(self, args=None, root_path=None, dataset='P12', device=torch.device("cpu"), q=0.016, upsampling_batch=False):
         if args['task_name'] == 'classification_mTAN_encoder':
-            print(args['task_name'])
             self.data_objects = get_data_mTAN(args, dataset, device, q, upsampling_batch)
         else:
             self.data_objects = get_data(args, dataset, device, q, upsampling_batch)

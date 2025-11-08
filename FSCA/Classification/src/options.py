@@ -102,7 +102,7 @@ class Options(object):
         self.parser.add_argument('--n', type=int, default=8000)
         self.parser.add_argument('--quantization', type=float, default=0.1, help="Quantization on the physionet dataset.")
         self.parser.add_argument('--classif', action='store_true', help="Include binary classification loss")
-        self.parser.add_argument('--data', type=str, default='P12',
+        self.parser.add_argument('--data', type=str, default=None,
                                  help="Dataset name")
         self.parser.add_argument('--data_split_path', type=str, help='data split index file')
         self.parser.add_argument('--feature_dim', type=int, default=41, help='the number of features')

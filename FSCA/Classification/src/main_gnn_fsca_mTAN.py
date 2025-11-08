@@ -73,38 +73,15 @@ def main(config):
     if config['training_flag']:
         # training
         train_loader = all_data.data_objects["train_dataloader"]
-        # feat_dim = train_data.feature_dim  # dimensionality of data features
-        # train_loader = DataLoader(
-        #     train_data,
-        #     batch_size=config['batch_size'],
-        #     shuffle=False,
-        #     num_workers=config['num_workers'],
-        #     drop_last=False,
-        # )
-
         val_loader = all_data.data_objects["val_dataloader"]
-        # val_loader = DataLoader(
-        #     val_data,
-        #     batch_size=config['batch_size'],
-        #     shuffle=False,
-        #     num_workers=config['num_workers'],
-        #     drop_last=False,
-        # )
-    
+
     test_loader = all_data.data_objects["test_dataloader"]
-    # test_loader = DataLoader(
-    #     test_data,
-    #     batch_size=config['batch_size'],
-    #     shuffle=False,
-    #     num_workers=config['num_workers'],
-    #     drop_last=False,
-    # )
+
 
     config['label_values'] = list(range(len(all_data.class_names)))
 
     # Create model
     logger.info("Creating model ...")
-    # model = model_factory(config, my_data)
     if config['training_flag']:
         model = GNNLLM_fsca(config, all_data)
     else:
@@ -165,51 +142,14 @@ def main(config):
 
         _, collate_fn, runner_class = pipeline_factory(config)
 
-        # test_loader = DataLoader(dataset=test_data,
-        #                     batch_size=config['batch_size'],
-        #                     shuffle=False,
-        #                     num_workers=config['num_workers'],
-        #                     drop_last=False,
-        #                     pin_memory=True,
-        #                     collate_fn=lambda x: collate_fn(x, max_len=model.max_len))
-
         test_evaluator = runner_class(model, test_loader, device, loss_module,
                                             print_interval=config['print_interval'], console=config['console'])
-        # aggr_metrics_test, per_batch_test = test_evaluator.evaluate(keep_all=True)
-        # print_str = 'Test Summary: '
-        # for k, v in aggr_metrics_test.items():
-        #     print_str += '{}: {:8f} | '.format(k, v)
-        # logger.info(print_str)
 
         aggr_metrics_test, per_batch_test = test(test_evaluator, config=config)
         return
     
     # Initialize data generators
     _, collate_fn, runner_class = pipeline_factory(config)
-
-    # train_loader = DataLoader(dataset=train_data,
-    #                           batch_size=config['batch_size'],
-    #                           shuffle=False,
-    #                           num_workers=config['num_workers'],
-    #                           drop_last=False,
-    #                           pin_memory=True,
-    #                           collate_fn=lambda x: collate_fn(x, max_len=model.max_len))
-
-    # val_loader = DataLoader(dataset=val_data,
-    #                         batch_size=config['batch_size'],
-    #                         shuffle=False,
-    #                         num_workers=config['num_workers'],
-    #                         drop_last=False,
-    #                         pin_memory=True,
-    #                         collate_fn=lambda x: collate_fn(x, max_len=model.max_len))
-    
-    # test_loader = DataLoader(dataset=test_data,
-    #                         batch_size=config['batch_size'],
-    #                         shuffle=False,
-    #                         num_workers=config['num_workers'],
-    #                         drop_last=False,
-    #                         pin_memory=True,
-    #                         collate_fn=lambda x: collate_fn(x, max_len=model.max_len))
 
     trainer = runner_class(model, train_loader, device, loss_module, optimizer, l2_reg=output_reg,
                                  print_interval=config['print_interval'], console=config['console'])
@@ -254,10 +194,8 @@ def main(config):
         total_epoch_time += epoch_runtime
         avg_epoch_time = total_epoch_time / (epoch - start_epoch)
         avg_batch_time = avg_epoch_time / len(train_loader)
-        # avg_sample_time = avg_epoch_time / len(train_data)
         logger.info("Avg epoch train. time: {} hours, {} minutes, {} seconds".format(*utils.readable_time(avg_epoch_time)))
         logger.info("Avg batch train. time: {} seconds".format(avg_batch_time))
-        # logger.info("Avg sample train. time: {} seconds".format(avg_sample_time))
 
         # evaluate if first or last epoch or at specified interval
         if (epoch == config["epochs"]) or (epoch == start_epoch + 1) or (epoch % config['val_interval'] == 0):
@@ -269,11 +207,8 @@ def main(config):
             # test
             aggr_metrics_test, per_batch_test = test(test_evaluator, config=config)
 
-        # utils.save_model(os.path.join(config['save_dir'], 'model_{}.pth'.format(mark)), epoch, model, optimizer)
-
         # Learning rate scheduling
         if epoch == config['lr_step'][lr_step]:
-            # utils.save_model(os.path.join(config['save_dir'], 'model_{}.pth'.format(epoch)), epoch, model, optimizer)
             lr = lr * config['lr_factor'][lr_step]
             if lr_step < len(config['lr_step']) - 1:  # so that this index does not get out of bounds
                 lr_step += 1

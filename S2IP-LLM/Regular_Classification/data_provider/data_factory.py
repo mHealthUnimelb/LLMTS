@@ -1,4 +1,4 @@
-from data_provider.data_loader import Dataset_ETT_hour, Dataset_ETT_hour_decomposed, Dataset_ETT_minute, Dataset_ETT_minute_decomposed, Dataset_Custom, Dataset_Physionet, Dataset_ECG
+from data_provider.data_loader import Dataset_ETT_hour, Dataset_ETT_hour_decomposed, Dataset_ETT_minute, Dataset_ETT_minute_decomposed, Dataset_Custom, Dataset_ECG
 from torch.utils.data import DataLoader
 
 data_dict = {
@@ -13,7 +13,6 @@ data_dict = {
     'ECL': Dataset_Custom,
     'traffic': Dataset_Custom,
     'weather': Dataset_Custom,
-    'PhysioNet': Dataset_Physionet,
     'ECG': Dataset_ECG,
 }
 

@@ -1,12 +1,12 @@
 CUDA_VISIBLE_DEVICES=0 python -u run_mTAN_encoder.py \
   --task_name ir_classification_mTAN \
   --is_training 1 \
-  --root_path ./dataP12 \
+  --root_path ../../datasets/P12data \
   --data_path P12 \
   --model_id P12 \
   --model S2IPLLM_mTAN_encoder \
   --data P12 \
-  --data_split_path ./data/P12data/splits/phy12_split3.npy \
+  --data_split_path ../../datasets/P12data/splits/phy12_split3.npy \
   --number_variable 41 \
   --features M \
   --num_ref_points 256 \

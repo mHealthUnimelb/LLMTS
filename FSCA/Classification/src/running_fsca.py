@@ -427,8 +427,6 @@ class SupervisedRunner(BaseRunner):
             if configs['data'] == 'P12' or configs['data'] == 'MIMIC' or configs['data'] == 'activity':
                 if configs['task_name'] == 'classification':
                     X, targets = batch
-                    print("X shape", X.shape)
-                    print("target shape", targets.shape)
                     X = X.to(self.device)
                     if targets.dim() == 1:
                         targets = targets.unsqueeze(1).to(self.device) # (batch, 1)

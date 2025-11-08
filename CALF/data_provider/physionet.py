@@ -101,32 +101,17 @@ class PhysioNet(object):
         if not self._check_exists():
             raise RuntimeError('Dataset not found. You can use download=True to download it')
 
-        # depending on the train flag, choose the appropriate processed data file
-        # if self.train:
-        #     data_file = self.training_file
-        # else:
-        #     data_file = self.test_file
-
         # load the data and labels from processed files
         if self.device == 'cpu':
             data_a = torch.load(os.path.join(self.processed_folder, self.set_a), map_location='cpu')
             data_b = torch.load(os.path.join(self.processed_folder, self.set_b), map_location='cpu')
             data_c = torch.load(os.path.join(self.processed_folder, self.set_c), map_location='cpu')
-            # labels_a = torch.load(os.path.join(self.processed_folder, self.label_file_a), map_location='cpu')
-            # labels_b = torch.load(os.path.join(self.processed_folder, self.label_file_b), map_location='cpu')
-            # labels_c = torch.load(os.path.join(self.processed_folder, self.label_file_c), map_location='cpu')
         else:
             data_a = torch.load(os.path.join(self.processed_folder, self.set_a))
             data_b = torch.load(os.path.join(self.processed_folder, self.set_b))
             data_c = torch.load(os.path.join(self.processed_folder, self.set_c))
-            # labels_a = torch.load(os.path.join(self.processed_folder, self.label_file_a))
-            # labels_b = torch.load(os.path.join(self.processed_folder, self.label_file_b))
-            # labels_c = torch.load(os.path.join(self.processed_folder, self.label_file_c))
-
+            
         self.data = data_a + data_b + data_c
-        # self.labels = labels_a + labels_b + labels_c
-        print("data shape", len(self.data))
-        # print("label shape:", len(self.labels))
 
         # if n_samples is specified, truncate the dataset to that number of samples
         if n_samples is not None:
@@ -176,7 +161,6 @@ class PhysioNet(object):
             for txtfile in os.listdir(dirname):
                 if txtfile.split('.')[0] not in self.blacklist:
                     record_id = txtfile.split('.')[0]
-                    # print("record_id", record_id)
                     with open(os.path.join(dirname, txtfile)) as f:
                         lines = f.readlines()
                         prev_time = 0
@@ -192,9 +176,6 @@ class PhysioNet(object):
                             # round up the time stamps (up to 6 min by default)
                             # used for speed -- we actually don't need to quantize it in Latent ODE
                             time = round(time / self.quantization) * self.quantization
-
-                            # time in minutes
-                            # time = float(time.split(':')[0]) * 60 + float(time.split(':')[1])
 
                             if time != prev_time:
                                 tt.append(time)
@@ -255,14 +236,6 @@ class PhysioNet(object):
     @property
     def processed_folder(self):
         return os.path.join(self.root, self.__class__.__name__, 'processed')
-
-    # @property
-    # def training_file(self):
-    #     return 'set-a_{}.pt'.format(self.quantization)
-
-    # @property
-    # def test_file(self):
-    #     return 'set-b_{}.pt'.format(self.quantization)
 
     @property
     def set_a(self):
@@ -340,66 +313,6 @@ class PhysioNet(object):
         fig.tight_layout()
         fig.savefig(plot_name)
         plt.close(fig)
-
-
-# def variable_time_collate_fn(batch, args, device=torch.device("cpu"), data_type="train",
-#                              data_min=None, data_max=None):
-#     """
-#     Expects a batch of time series data in the form of (record_id, tt, vals, mask, labels) where
-#         - record_id is a patient id
-#         - tt is a 1-dimensional tensor containing T time values of observations.
-#         - vals is a (T, D) tensor containing observed values for D variables.
-#         - mask is a (T, D) tensor containing 1 where values were observed and 0 otherwise.
-#         - labels is a list of labels for the current patient, if labels are available. Otherwise None.
-#     Returns:
-#         combined_tt: The union of all time observations.
-#         combined_vals: (M, T, D) tensor containing the observed values.
-#         combined_mask: (M, T, D) tensor containing 1 where values were observed and 0 otherwise.
-#     """
-#     D = batch[0][2].shape[1]
-#     combined_tt, inverse_indices = torch.unique(torch.cat([ex[1] for ex in batch]), sorted=True, return_inverse=True)
-#     combined_tt = combined_tt.to(device)
-#
-#     offset = 0
-#     combined_vals = torch.zeros([len(batch), len(combined_tt), D]).to(device)
-#     combined_mask = torch.zeros([len(batch), len(combined_tt), D]).to(device)
-#
-#     combined_labels = None
-#     N_labels = 1
-#
-#     combined_labels = torch.zeros(len(batch), N_labels) + torch.tensor(float('nan'))
-#     combined_labels = combined_labels.to(device=device)
-#
-#     for b, (record_id, tt, vals, mask, labels) in enumerate(batch):
-#         tt = tt.to(device)
-#         vals = vals.to(device)
-#         mask = mask.to(device)
-#         if labels is not None:
-#             labels = labels.to(device)
-#
-#         indices = inverse_indices[offset:offset + len(tt)]
-#         offset += len(tt)
-#
-#         combined_vals[b, indices] = vals
-#         combined_mask[b, indices] = mask
-#
-#         if labels is not None:
-#             combined_labels[b] = labels
-#
-#     combined_vals, _, _ = utils.normalize_masked_data(combined_vals, combined_mask,
-#                                                       att_min=data_min, att_max=data_max)
-#
-#     if torch.max(combined_tt) != 0.:
-#         combined_tt = combined_tt / torch.max(combined_tt)
-#
-#     data_dict = {
-#         "data": combined_vals,
-#         "time_steps": combined_tt,
-#         "mask": combined_mask,
-#         "labels": combined_labels}
-#
-#     data_dict = utils.split_and_subsample_batch(data_dict, args, data_type=data_type)
-#     return data_dict
 
 
 # a custom collate function that takes a batch of (record_id, tt, vals, mask, labels) and
@@ -508,45 +421,6 @@ def variable_time_collate_fn2(batch, args, device=torch.device("cpu"), data_type
     data_dict = utils.split_and_subsample_batch(data_dict, args, data_type=data_type)
     return data_dict
 
-
-# def variable_time_collate_fn3(batch, args, device=torch.device("cpu"), data_type="train",
-#                               data_min=None, data_max=None):
-#     """
-#     Expects a batch of time series data in the form of (record_id, tt, vals, mask, labels) where
-#       - record_id is a patient id
-#       - tt is a 1-dimensional tensor containing T time values of observations.
-#       - vals is a (T, D) tensor containing observed values for D variables.
-#       - mask is a (T, D) tensor containing 1 where values were observed and 0 otherwise.
-#       - labels is a list of labels for the current patient, if labels are available. Otherwise None.
-#     Returns:
-#       combined_tt: The union of all time observations.
-#       combined_vals: (M, T, D) tensor containing the observed values.
-#       combined_mask: (M, T, D) tensor containing 1 where values were observed and 0 otherwise.
-#     """
-#     D = batch[0][2].shape[1]
-#     len_tt = [ex[1].size(0) for ex in batch]
-#     maxlen = np.max(len_tt)
-#     enc_combined_tt = torch.zeros([len(batch), maxlen]).to(device)
-#     enc_combined_vals = torch.zeros([len(batch), maxlen, D]).to(device)
-#     enc_combined_mask = torch.zeros([len(batch), maxlen, D]).to(device)
-#     for b, (record_id, tt, vals, mask, labels) in enumerate(batch):
-#         currlen = tt.size(0)
-#         enc_combined_tt[b, :currlen] = tt.to(device)
-#         enc_combined_vals[b, :currlen] = vals.to(device)
-#         enc_combined_mask[b, :currlen] = mask.to(device)
-#
-#     enc_combined_vals, _, _ = utils.normalize_masked_data(enc_combined_vals, enc_combined_mask,
-#                                                           att_min=data_min, att_max=data_max)
-#
-#     if torch.max(enc_combined_tt) != 0.:
-#         enc_combined_tt = enc_combined_tt / torch.max(enc_combined_tt)
-#
-#     data_dict = {
-#         "observed_data": enc_combined_vals,
-#         "observed_tp": enc_combined_tt,
-#         "observed_mask": enc_combined_mask}
-#
-#     return data_dict
 
 
 if __name__ == '__main__':

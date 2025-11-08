@@ -1,3 +1,5 @@
+# Do patching
+
 import torch
 import torch.nn as nn
 from einops import rearrange
@@ -18,7 +20,6 @@ class Encoder_PCA(nn.Module):
         self.word_embedding = word_embedding.T
 
     def forward(self, x):
-        print("x shape: ", x.shape) # (128, 2, 2500)
         B = x.shape[0]
         if self.word_embedding.ndim == 2:
             self.word_embedding = self.word_embedding.repeat(B, 1, 1)
@@ -26,23 +27,12 @@ class Encoder_PCA(nn.Module):
             self.word_embedding = self.word_embedding[0].repeat(B, 1, 1)
 
         x = self.linear(x)
-        print("x shape: ", x.shape) # (128, 2, 768)
-
         x = self.transformer_encoder(x.transpose(0, 1)).transpose(0, 1)
-        print("x shape: ", x.shape) # (128, 2, 768)
-
         x_time = x
-        print("x_time shape: ", x_time.shape) # (128, 2, 768)
-
         q = x.transpose(0, 1)
-        print("q shape: ", q.shape) # (2, 128, 768)
         k = v = self.word_embedding.transpose(0, 1)
-        print("k shape: ", k.shape) # (18, 128, 768)
         x, w_ = self.cross_attention(q, k, v)
-        print("weights shape: ", w_.shape) # (128, 2, 18)
-
         x = x.transpose(0, 1)
-        print("x shape: ", x.shape) # (128, 2, 768)
 
         return x_time, x
 
@@ -79,7 +69,6 @@ class Model(nn.Module):
         self.gpt2 = get_peft_model(self.gpt2, peft_config)
 
         word_embedding = torch.tensor(torch.load(configs.word_embedding_path)).to(device=device)
-        print("word_embedding_path: ", configs.word_embedding_path)
 
         for i, (name, param) in enumerate(self.gpt2.named_parameters()):
             if 'ln' in name or 'wpe' in name or 'lora' in name:
@@ -107,9 +96,6 @@ class Model(nn.Module):
         if self.task_name == 'long_term_forecast' or self.task_name == 'short_term_forecast':
             self.out_layer = nn.Linear(configs.d_model, configs.pred_len)
         elif self.task_name == 'classification':
-            # if configs.classify_pertp:
-            #     self.out_layer = nn.Linear(configs.enc_in, configs.num_class)
-            # else:
             self.out_layer = nn.Linear(configs.d_model * configs.enc_in * self.patch_num, configs.num_class)
         elif self.task_name == 'imputation':
             self.out_layer = nn.Linear(configs.d_model, configs.seq_len)
@@ -164,23 +150,16 @@ class Model(nn.Module):
     def classification(self, x):
         B, L, M = x.shape
 
-        # print("x shape: ", x.shape) # (256, 2500, 2)
-
         x = rearrange(x, 'b l m -> b m l')
 
         x = self.padding_patch_layer(x)
         x = x.unfold(dimension=-1, size=self.patch_len, step=self.stride)
-        print("x shape: ", x.shape) # (batch, feature, num_patch, patch_len)
         x = x.reshape(x.shape[0] * x.shape[1], x.shape[2], x.shape[3])
 
         outputs_time1, outputs_text1 = self.in_layer(x)
-        print("outputs_time1 shape: ", outputs_time1.shape) # (128, 2, 768)
-        print("outputs_text1 shape: ", outputs_text1.shape) # (128, 2, 768)
 
         outputs_time, intermidiate_feat_time = self.gpt2(inputs_embeds=outputs_time1)
         outputs_text, intermidiate_feat_text = self.gpt2_text(inputs_embeds=outputs_text1)
-        print("outputs_time shape: ", outputs_time.shape) # (128, 2, 768)
-        print("outputs_text shape: ", outputs_text.shape) # (128, 2, 768)
 
         outputs_time += outputs_time1
         outputs_text += outputs_text1
@@ -190,16 +169,6 @@ class Model(nn.Module):
         intermidiate_feat_text = tuple(
             [self.text_proj[idx](feat) for idx, feat in enumerate(list(intermidiate_feat_text))])
 
-        print("outputs_time shape: ", outputs_time.shape) # (128, 2, 768)
-        print("outputs_text shape: ", outputs_text.shape) # (128, 2, 768)
-
-        # if self.configs.classify_pertp:
-        #     outputs_time = self.projection_layer(outputs_time) # (batch, channel, seq_len)
-        #     outputs_text = self.projection_layer(outputs_text)
-
-        #     outputs_time = outputs_time.permute(0, 2, 1) # (batch, seq_len, channel)
-        #     outputs_text = outputs_text.permute(0, 2, 1)
-        # else:
         outputs_time = outputs_time.reshape(B, -1)
         outputs_text = outputs_text.reshape(B, -1)
 
@@ -209,8 +178,6 @@ class Model(nn.Module):
             outputs_time = outputs_time.repeat(1, L, 1) # (batch, seq_len, hidden)
             outputs_text = outputs_text.repeat(1, L, 1)
 
-        print("outputs_time shape: ", outputs_time.shape) # (128, 1536)
-        print("outputs_text shape: ", outputs_text.shape) # (128, 1536)
         outputs_time = self.out_layer(outputs_time)
         outputs_text = self.out_layer(outputs_text)
 

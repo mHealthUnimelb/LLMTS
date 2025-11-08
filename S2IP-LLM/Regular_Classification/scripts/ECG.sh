@@ -2,7 +2,7 @@ CUDA_VISIBLE_DEVICES=0 python -u run.py \
   --task_name classification \
   --loss 'CE' \
   --is_training 1 \
-  --root_path ./data/ECG/ \
+  --root_path ../../datasets/ECG/ \
   --model_id ECG \
   --model S2IPLLM \
   --data ECG \
@@ -29,4 +29,4 @@ CUDA_VISIBLE_DEVICES=0 python -u run.py \
   --pool_size  1000 \
   --percent 100 \
   --trend_length 96 \
-  --seasonal_length 96
+  --seasonal_length 96 \

@@ -90,32 +90,17 @@ class PhysioNet(object):
         if not self._check_exists():
             raise RuntimeError('Dataset not found. You can use download=True to download it')
 
-        # depending on the train flag, choose the appropriate processed data file
-        # if self.train:
-        #     data_file = self.training_file
-        # else:
-        #     data_file = self.test_file
-
         # load the data and labels from processed files
         if self.device == 'cpu':
             data_a = torch.load(os.path.join(self.processed_folder, self.set_a), map_location='cpu')
             data_b = torch.load(os.path.join(self.processed_folder, self.set_b), map_location='cpu')
             data_c = torch.load(os.path.join(self.processed_folder, self.set_c), map_location='cpu')
-            # labels_a = torch.load(os.path.join(self.processed_folder, self.label_file_a), map_location='cpu')
-            # labels_b = torch.load(os.path.join(self.processed_folder, self.label_file_b), map_location='cpu')
-            # labels_c = torch.load(os.path.join(self.processed_folder, self.label_file_c), map_location='cpu')
         else:
             data_a = torch.load(os.path.join(self.processed_folder, self.set_a))
             data_b = torch.load(os.path.join(self.processed_folder, self.set_b))
             data_c = torch.load(os.path.join(self.processed_folder, self.set_c))
-            # labels_a = torch.load(os.path.join(self.processed_folder, self.label_file_a))
-            # labels_b = torch.load(os.path.join(self.processed_folder, self.label_file_b))
-            # labels_c = torch.load(os.path.join(self.processed_folder, self.label_file_c))
-
+            
         self.data = data_a + data_b + data_c
-        # self.labels = labels_a + labels_b + labels_c
-        print("data shape", len(self.data))
-        # print("label shape:", len(self.labels))
 
         # if n_samples is specified, truncate the dataset to that number of samples
         if n_samples is not None:
@@ -165,7 +150,6 @@ class PhysioNet(object):
             for txtfile in os.listdir(dirname):
                 if txtfile.split('.')[0] not in self.blacklist:
                     record_id = txtfile.split('.')[0]
-                    # print("record_id", record_id)
                     with open(os.path.join(dirname, txtfile)) as f:
                         lines = f.readlines()
                         prev_time = 0
@@ -241,14 +225,6 @@ class PhysioNet(object):
     @property
     def processed_folder(self):
         return os.path.join(self.root, self.__class__.__name__, 'processed')
-
-    # @property
-    # def training_file(self):
-    #     return 'set-a_{}.pt'.format(self.quantization)
-
-    # @property
-    # def test_file(self):
-    #     return 'set-b_{}.pt'.format(self.quantization)
 
     @property
     def set_a(self):

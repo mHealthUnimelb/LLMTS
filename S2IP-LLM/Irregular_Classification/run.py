@@ -3,7 +3,6 @@ import os
 import torch
 
 from exp.exp_ir_classification import Exp_ir_Classification
-from exp.exp_ir_forecasting import Exp_IR_Forecast
 
 import random
 import numpy as np
@@ -137,9 +136,7 @@ np.random.seed(fix_seed)
 print('Args in experiment:')
 print(args)
 
-if args.task_name == 'ir_forecast':
-    Exp = Exp_IR_Forecast
-elif args.task_name == 'ir_classification':
+if args.task_name == 'ir_classification':
     Exp = Exp_ir_Classification
 
 if args.is_training:

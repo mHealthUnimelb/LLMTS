@@ -499,24 +499,23 @@ def balanced_batch_sampler(train_data, true_labels, batch_size, n_classes):
 def get_data(args, dataset, device, q, upsampling_batch, split_type, feature_removal_level, missing_ratio, flag=1,
              reverse=False, predictive_label='mortality'):
     if dataset == 'P12':
-        train_dataset_obj_1 = PhysioNet('data/physionet', train=True,
+        train_dataset_obj_1 = PhysioNet('../datasets/physionet', train=True,
                                         quantization=q,
                                         download=True, n_samples=12000,
                                         device=device, set_letter='a')
 
-        train_dataset_obj_2 = PhysioNet('data/physionet', train=True,
+        train_dataset_obj_2 = PhysioNet('../datasets/physionet', train=True,
                                         quantization=q,
                                         download=True, n_samples=12000,
                                         device=device, set_letter='b')
 
-        train_dataset_obj_3 = PhysioNet('data/physionet', train=True,
+        train_dataset_obj_3 = PhysioNet('../datasets/physionet', train=True,
                                         quantization=q,
                                         download=True, n_samples=12000,
                                         device=device, set_letter='c')
 
-        PT_dict = np.load('./data/P12data/processed_data/PTdict_list.npy', allow_pickle=True)
-        arr_outcomes = np.load('./data/P12data/processed_data/arr_outcomes.npy', allow_pickle=True)
-        # total_dataset = preprocess_P12(PT_dict, arr_outcomes, q)
+        PT_dict = np.load('../datasets/P12data/processed_data/PTdict_list.npy', allow_pickle=True)
+        arr_outcomes = np.load('../datasets/P12data/processed_data/arr_outcomes.npy', allow_pickle=True)
         idx_train, idx_val, idx_test = np.load(args.data_split_path, allow_pickle=True)
 
         dataset_1 = train_dataset_obj_1[:len(train_dataset_obj_1)]
@@ -585,21 +584,15 @@ def get_data(args, dataset, device, q, upsampling_batch, split_type, feature_rem
         total_dataset = preprocess_PAM(PT_dict, arr_outcomes)
 
     elif dataset == 'MIMIC':
-        total_dataset = torch.load('./data/MIMIC/mimic_classification/processed/mimic.pt', map_location='cpu')
+        total_dataset = torch.load('../datasets/MIMIC/mimic_classification/processed/mimic.pt', map_location='cpu')
         total_dataset = [(record_id, tt, vals, mask, torch.tensor(label, dtype=torch.long)) for
                          (record_id, tt, vals, mask, label) in total_dataset]
         
     elif dataset == 'activity':
         # args.pred_window = 1000
-        total_dataset = PersonActivity('data/activity/', n_samples = int(1e8), download=True, device = device)
+        total_dataset = PersonActivity('../datasets/activity/', n_samples = int(1e8), download=True, device = device)
         # total_dataset = torch.load('./data/activiaty/processed/data.pt', map_location='cpu')
 
-    print('len(total_dataset):', len(total_dataset))
-
-    # train_data = []
-    # val_data = []
-    # test_data = []
-    #
     if dataset == 'P12':
         # get recorde_id from PTdict_list.npy
         train_record_ids = [PT_dict[i]['id'] for i in idx_train]
@@ -613,29 +606,15 @@ def get_data(args, dataset, device, q, upsampling_batch, split_type, feature_rem
         train_data = [record_dict[rid] for rid in train_record_ids]
         val_data = [record_dict[rid] for rid in val_record_ids]
         test_data = [record_dict[rid] for rid in test_record_ids]
-
-        print("train_data[0]:", train_data[0])
-        print("val_data[0]:", val_data[0])
-        print("test_data[0]:", test_data[0])
     elif dataset == 'MIMIC' or dataset == 'activity':
-        print("seed", args.seed)
         seen_data, test_data = model_selection.train_test_split(total_dataset, train_size=0.8, random_state=args.seed,
                                                                 shuffle=True)
         train_data, val_data = model_selection.train_test_split(seen_data, train_size=0.75, random_state=args.seed,
                                                                 shuffle=False)
-        print("Dataset n_samples:", len(total_dataset), len(train_data), len(val_data), len(test_data))
     else:
         train_data = [total_dataset[i] for i in idx_train]
-        print("train_data[0]:", train_data[0])
         val_data = [total_dataset[i] for i in idx_val]
-        print("val_data[0]:", val_data[0])
         test_data = [total_dataset[i] for i in idx_test]
-        print("test_data[0]:", test_data[0])
-
-    # if split_type == 'random':
-    #     # Shuffle and split
-    #     train_data, test_data = model_selection.train_test_split(total_dataset, train_size=0.9,     # 80% train, 10% validation, 10% test
-    #                                                              shuffle=True)
 
     record_id, tt, vals, mask, labels = train_data[0]
 
@@ -645,72 +624,6 @@ def get_data(args, dataset, device, q, upsampling_batch, split_type, feature_rem
 
     if flag:
         if args.classif:
-            print("train len:", len(train_data))
-            print("val len:", len(val_data))
-            print("test len:", len(test_data))
-
-            # if split_type == 'random':
-            #     train_data, val_data = model_selection.train_test_split(train_data, train_size=0.8889, shuffle=True)  # 80% train, 10% validation, 10% test
-            # elif split_type == 'age' or split_type == 'gender':
-            #     val_data, test_data = model_selection.train_test_split(test_data, train_size=0.5, shuffle=False)
-            #
-            # if dataset == 'P12':
-            #     num_all_features = 36
-            # elif dataset == 'P19':
-            #     num_all_features = 34
-            # elif dataset == 'eICU':
-            #     num_all_features = 14
-            # elif dataset == 'PAM':
-            #     num_all_features = 17
-            #
-            # num_missing_features = round(missing_ratio * num_all_features)
-            # if feature_removal_level == 'sample':
-            #     for i, tpl in enumerate(val_data):
-            #         idx = np.random.choice(num_all_features, num_missing_features, replace=False)
-            #         _, _, values, _, _ = tpl
-            #         tpl = list(tpl)
-            #         values[:, idx] = torch.zeros(values.shape[0], num_missing_features)
-            #         tpl[2] = values
-            #         val_data[i] = tuple(tpl)
-            #     for i, tpl in enumerate(test_data):
-            #         idx = np.random.choice(num_all_features, num_missing_features, replace=False)
-            #         _, _, values, _, _ = tpl
-            #         tpl = list(tpl)
-            #         values[:, idx] = torch.zeros(values.shape[0], num_missing_features)
-            #         tpl[2] = values
-            #         test_data[i] = tuple(tpl)
-            # elif feature_removal_level == 'set':
-            #     if dataset == 'P12':
-            #         dict_params = train_dataset_obj_1.params_dict
-            #         density_scores_names = np.load('../saved/IG_density_scores_P12.npy', allow_pickle=True)[:, 1]
-            #         idx = [dict_params[name] for name in density_scores_names[:num_missing_features]]
-            #     elif dataset == 'P19':
-            #         labels_ts = np.load('../../../P19data/processed_data/labels_ts.npy', allow_pickle=True)
-            #         dict_params = {label: i for i, label in enumerate(labels_ts[:-1])}
-            #         density_scores_names = np.load('../saved/IG_density_scores_P19.npy', allow_pickle=True)[:, 1]
-            #         idx = [dict_params[name] for name in density_scores_names[:num_missing_features]]
-            #     elif dataset == 'eICU':
-            #         labels_ts = np.load('../../../eICUdata/processed_data/eICU_ts_vars.npy', allow_pickle=True)
-            #         dict_params = {label: i for i, label in enumerate(labels_ts)}
-            #         density_scores_names = np.load('../saved/IG_density_scores_eICU.npy', allow_pickle=True)[:, 1]
-            #         idx = [dict_params[name] for name in density_scores_names[:num_missing_features]]
-            #     elif dataset == 'PAM':
-            #         density_scores_indices = np.load('../saved/IG_density_scores_PAM.npy', allow_pickle=True)[:, 0]
-            #         idx = list(map(int, density_scores_indices[:num_missing_features]))
-            #
-            #     for i, tpl in enumerate(val_data):
-            #         _, _, values, _, _ = tpl
-            #         tpl = list(tpl)
-            #         values[:, idx] = torch.zeros(values.shape[0], num_missing_features)
-            #         tpl[2] = values
-            #         val_data[i] = tuple(tpl)
-            #     for i, tpl in enumerate(test_data):
-            #         _, _, values, _, _ = tpl
-            #         tpl = list(tpl)
-            #         values[:, idx] = torch.zeros(values.shape[0], num_missing_features)
-            #         tpl[2] = values
-            #         test_data[i] = tuple(tpl)
-
             if upsampling_batch:
                 train_data_upsamled = []
                 true_labels = np.array([float(x[4].item()) for x in train_data])

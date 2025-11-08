@@ -72,38 +72,15 @@ def main(config):
     if config['training_flag']:
         # training
         train_data = data_class(root_path=config['root_path'], data_path=config['data_path'], flag='train', seq_len=config['seq_len'], training_flag=config['training_flag'])
-        # feat_dim = train_data.feature_dim  # dimensionality of data features
-        # train_loader = DataLoader(
-        #     train_data,
-        #     batch_size=config['batch_size'],
-        #     shuffle=False,
-        #     num_workers=config['num_workers'],
-        #     drop_last=False,
-        # )
 
         val_data = data_class(root_path=config['root_path'], data_path=config['data_path'], flag='val', seq_len=config['seq_len'], training_flag=config['training_flag'])
-        # val_loader = DataLoader(
-        #     val_data,
-        #     batch_size=config['batch_size'],
-        #     shuffle=False,
-        #     num_workers=config['num_workers'],
-        #     drop_last=False,
-        # )
-    
+
     test_data = data_class(root_path=config['root_path'], data_path=config['data_path'], flag='test', seq_len=config['seq_len'], training_flag=config['training_flag'])
-    # test_loader = DataLoader(
-    #     test_data,
-    #     batch_size=config['batch_size'],
-    #     shuffle=False,
-    #     num_workers=config['num_workers'],
-    #     drop_last=False,
-    # )
 
     config['label_values'] = list(range(len(test_data.class_names)))
 
     # Create model
     logger.info("Creating model ...")
-    # model = model_factory(config, my_data)
     if config['training_flag']:
         model = GNNLLM_fsca(config, train_data)
     else:
@@ -174,13 +151,8 @@ def main(config):
 
         test_evaluator = runner_class(model, test_loader, device, loss_module,
                                             print_interval=config['print_interval'], console=config['console'])
-        # aggr_metrics_test, per_batch_test = test_evaluator.evaluate(keep_all=True)
-        # print_str = 'Test Summary: '
-        # for k, v in aggr_metrics_test.items():
-        #     print_str += '{}: {:8f} | '.format(k, v)
-        # logger.info(print_str)
 
-        aggr_metrics_test, per_batch_test = test(test_evaluator)
+        aggr_metrics_test, per_batch_test = test(test_evaluator, config=config)
         return
     
     # Initialize data generators
@@ -233,7 +205,7 @@ def main(config):
     for epoch in tqdm(range(start_epoch + 1, config["epochs"] + 1), desc='Training Epoch', leave=False):
         mark = epoch if config['save_all'] else 'last'
         epoch_start_time = time.time()
-        aggr_metrics_train = trainer.train_epoch(epoch)  # dictionary of aggregate epoch metrics
+        aggr_metrics_train = trainer.train_epoch(epoch, config)  # dictionary of aggregate epoch metrics
         epoch_runtime = time.time() - epoch_start_time
         print()
         print_str = 'Epoch {} Training Summary: '.format(epoch)
@@ -266,13 +238,10 @@ def main(config):
             metrics.append(list(metrics_values))
 
             # test
-            aggr_metrics_test, per_batch_test = test(test_evaluator)
-
-        # utils.save_model(os.path.join(config['save_dir'], 'model_{}.pth'.format(mark)), epoch, model, optimizer)
+            aggr_metrics_test, per_batch_test = test(test_evaluator, config=config)
 
         # Learning rate scheduling
         if epoch == config['lr_step'][lr_step]:
-            # utils.save_model(os.path.join(config['save_dir'], 'model_{}.pth'.format(epoch)), epoch, model, optimizer)
             lr = lr * config['lr_factor'][lr_step]
             if lr_step < len(config['lr_step']) - 1:  # so that this index does not get out of bounds
                 lr_step += 1

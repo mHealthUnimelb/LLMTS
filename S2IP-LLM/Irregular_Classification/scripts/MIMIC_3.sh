@@ -1,7 +1,7 @@
 CUDA_VISIBLE_DEVICES=0 python -u run.py \
   --task_name ir_classification \
   --is_training 1 \
-  --root_path ./MIMIC \
+  --root_path ../../datasets/MIMIC \
   --data_path MIMIC \
   --model_id MIMIC \
   --model S2IPLLM \

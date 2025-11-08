@@ -1,131 +1,0 @@
-/data/gpfs/projects/punim2341/anaconda3/envs/moment/lib/python3.11/site-packages/transformers/utils/generic.py:311: FutureWarning: `torch.utils._pytree._register_pytree_node` is deprecated. Please use `torch.utils._pytree.register_pytree_node` instead.
-  torch.utils._pytree._register_pytree_node(
-Args in experiment:
-Namespace(task_name='ir_classification', is_training=0, model_id='PhysioNet', data='PhysioNet', number_variable=7, root_path='./data/PhysioNet', data_path='PhysioNet', features='M', freq='h', checkpoints='./checkpoints/', n=8000, quantization=0.016, classif=True, classify_pertp=False, seq_len=2881, label_len=48, pred_len=96, seasonal_patterns='Monthly', num_classes=2, embed='timeF', output_attention=False, num_workers=90, itr=1, train_epochs=100, batch_size=28, patience=3, learning_rate=0.0001, des='Exp', loss='CE', lradj='type2', use_amp=False, decay_fac=0.75, use_gpu=True, gpu=0, use_multi_gpu=False, devices='0,1,2,3', p_hidden_dims=[128, 128], p_hidden_layers=2, percent=5)
-batch size:  28
-4000
-torch.Size([800, 2881])
-torch.Size([2560, 2881])
-torch.Size([640, 2881])
-tensor(356.) tensor(91.) tensor(107.)
-torch.Size([2560, 2881, 83]) torch.Size([2560, 1]) torch.Size([640, 2881, 83]) torch.Size([640, 1]) torch.Size([800, 2881, 83]) torch.Size([800, 1])
-time steps:  2881
-batch size:  28
-4000
-torch.Size([800, 2881])
-torch.Size([2560, 2881])
-torch.Size([640, 2881])
-tensor(356.) tensor(91.) tensor(107.)
-torch.Size([2560, 2881, 83]) torch.Size([2560, 1]) torch.Size([640, 2881, 83]) torch.Size([640, 1]) torch.Size([800, 2881, 83]) torch.Size([800, 1])
-time steps:  2881
-batch size:  28
-4000
-torch.Size([800, 2881])
-torch.Size([2560, 2881])
-torch.Size([640, 2881])
-tensor(356.) tensor(91.) tensor(107.)
-torch.Size([2560, 2881, 83]) torch.Size([2560, 1]) torch.Size([640, 2881, 83]) torch.Size([640, 1]) torch.Size([800, 2881, 83]) torch.Size([800, 1])
-time steps:  2881
->>>>>>>testing : ir_classification_PhysioNet_PhysioNet_2881_ebtimeF_0<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-batch size:  28
-4000
-torch.Size([800, 2881])
-torch.Size([2560, 2881])
-torch.Size([640, 2881])
-tensor(356.) tensor(91.) tensor(107.)
-torch.Size([2560, 2881, 83]) torch.Size([2560, 1]) torch.Size([640, 2881, 83]) torch.Size([640, 1]) torch.Size([800, 2881, 83]) torch.Size([800, 1])
-time steps:  2881
-0it [00:00, ?it/s]batch_x shape:  torch.Size([28, 41, 2881])
-prob shape torch.Size([28, 2])
-1it [00:18, 18.41s/it]batch_x shape:  torch.Size([28, 41, 2881])
-prob shape torch.Size([28, 2])
-2it [00:26, 12.23s/it]batch_x shape:  torch.Size([28, 41, 2881])
-prob shape torch.Size([28, 2])
-3it [00:44, 15.06s/it]batch_x shape:  torch.Size([28, 41, 2881])
-prob shape torch.Size([28, 2])
-4it [01:03, 16.43s/it]batch_x shape:  torch.Size([28, 41, 2881])
-prob shape torch.Size([28, 2])
-5it [01:21, 17.23s/it]batch_x shape:  torch.Size([28, 41, 2881])
-prob shape torch.Size([28, 2])
-6it [01:40, 17.73s/it]batch_x shape:  torch.Size([28, 41, 2881])
-prob shape torch.Size([28, 2])
-7it [01:59, 18.08s/it]batch_x shape:  torch.Size([28, 41, 2881])
-prob shape torch.Size([28, 2])
-8it [02:18, 18.32s/it]batch_x shape:  torch.Size([28, 41, 2881])
-prob shape torch.Size([28, 2])
-9it [02:37, 18.50s/it]batch_x shape:  torch.Size([28, 41, 2881])
-prob shape torch.Size([28, 2])
-10it [02:56, 18.63s/it]batch_x shape:  torch.Size([28, 41, 2881])
-prob shape torch.Size([28, 2])
-11it [03:14, 18.72s/it]batch_x shape:  torch.Size([28, 41, 2881])
-prob shape torch.Size([28, 2])
-12it [03:33, 18.78s/it]batch_x shape:  torch.Size([28, 41, 2881])
-prob shape torch.Size([28, 2])
-13it [03:52, 18.82s/it]batch_x shape:  torch.Size([28, 41, 2881])
-prob shape torch.Size([28, 2])
-14it [04:11, 18.84s/it]batch_x shape:  torch.Size([28, 41, 2881])
-prob shape torch.Size([28, 2])
-15it [04:30, 18.85s/it]batch_x shape:  torch.Size([28, 41, 2881])
-prob shape torch.Size([28, 2])
-16it [04:49, 18.85s/it]batch_x shape:  torch.Size([28, 41, 2881])
-prob shape torch.Size([28, 2])
-17it [05:08, 18.84s/it]batch_x shape:  torch.Size([28, 41, 2881])
-prob shape torch.Size([28, 2])
-18it [05:27, 18.84s/it]batch_x shape:  torch.Size([28, 41, 2881])
-prob shape torch.Size([28, 2])
-19it [05:45, 18.84s/it]batch_x shape:  torch.Size([28, 41, 2881])
-prob shape torch.Size([28, 2])
-20it [06:04, 18.83s/it]batch_x shape:  torch.Size([28, 41, 2881])
-prob shape torch.Size([28, 2])
-21it [06:23, 18.83s/it]batch_x shape:  torch.Size([28, 41, 2881])
-prob shape torch.Size([28, 2])
-22it [06:42, 18.83s/it]batch_x shape:  torch.Size([28, 41, 2881])
-prob shape torch.Size([28, 2])
-23it [07:01, 18.83s/it]batch_x shape:  torch.Size([28, 41, 2881])
-prob shape torch.Size([28, 2])
-24it [07:20, 18.83s/it]batch_x shape:  torch.Size([28, 41, 2881])
-prob shape torch.Size([28, 2])
-25it [07:38, 18.83s/it]batch_x shape:  torch.Size([28, 41, 2881])
-prob shape torch.Size([28, 2])
-26it [07:57, 18.83s/it]batch_x shape:  torch.Size([28, 41, 2881])
-prob shape torch.Size([28, 2])
-27it [08:16, 18.83s/it]batch_x shape:  torch.Size([28, 41, 2881])
-prob shape torch.Size([28, 2])
-28it [08:35, 18.83s/it]batch_x shape:  torch.Size([16, 41, 2881])
-prob shape torch.Size([16, 2])
-29it [08:47, 16.96s/it]29it [08:47, 18.21s/it]
-Accuracy:0.13375
-AUPRC:0.11221519755058681
-AUC:0.43353427465577
-Job ID           : 6188961
-Cluster          : spartan
-User/Project     : feixiangz/punim2341
-Nodes            : 1
-Wall-clock time  : 00:09:48 / 01:00:00
-
-Displaying overall resources usage from 2025-02-25 22:27:45 to 2025-02-25 22:37:33:
-
-NODE            CPU#        TOT%   ( USR   / SYS   / WIO   / IDLE  ) 
-
-spartan-gpgpu129 : 
-                CPU# 1    : 98.8   (  75.4 /  23.4 /   0.0 /   1.2 ) 
-
-                            UTIL%   MEM-USG-AVG  MEM-USG-MAX  TOT-MEM   
-                GPU# 1    : 91.6    41162.0M     44759.0M     81920.0M 
-
-
-Allocated CPUs            : 1    
-  CPUs with usage <25%    : 0    
-  CPUs with usage <50%    : 0    
-  CPUs with usage >50%    : 1    
-
-
-Allocated GPUs            : 1    
-  GPUs with usage <25%    : 0    
-  GPUs with usage <50%    : 0    
-  GPUs with usage >50%    : 1    
-
-Memory used (RAM)         : 38.9%  [16702MB of 42950MB]
-
---------------------------------------------
-

@@ -133,7 +133,6 @@ if __name__ == '__main__':
     parser.add_argument('--target_data', type=str, default="ETTm1", help='target data for zero shot')
 
     args = parser.parse_args()
-    print("success")
 
     args.use_gpu = True if torch.cuda.is_available() and args.use_gpu else False
 
@@ -242,7 +241,6 @@ if __name__ == '__main__':
             args.lora_alpha,
             ii)
 
-        # setting = 'classification_ECG_CALF_2500_0_CALF_ECG_ftM_sl2500_ll0_pl0_dm768_nh4_el2_dl1_df768_fc1_ebtimeF_dtTrue_test_gpt6_lr0.0005_wepwte_pca_600.pt_task_w1.0_r32_lora_alpha64_0'
         exp = Exp(args)  # set experiments
         print('>>>>>>>testing : {}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<'.format(setting))
         exp.test(args, setting, test=1)

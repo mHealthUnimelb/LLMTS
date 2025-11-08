@@ -47,7 +47,6 @@ def data_provider(args, flag):
             win_size=args.seq_len,
             flag=flag,
         )
-        print(flag, len(data_set))
         data_loader = DataLoader(
             data_set,
             batch_size=batch_size,
@@ -61,7 +60,6 @@ def data_provider(args, flag):
             root_path=args.root_path,
             flag=flag,
         )
-        print(flag, len(data_set))
         data_loader = DataLoader(
             data_set,
             batch_size=batch_size,
@@ -90,8 +88,7 @@ def data_provider(args, flag):
             seasonal_patterns=args.seasonal_patterns,
             percent=percent
         )
-        # batch_size = args.batch_size
-        print(flag, len(data_set))
+
         data_loader = DataLoader(
             data_set,
             batch_size=batch_size,

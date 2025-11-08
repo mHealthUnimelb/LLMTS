@@ -23,15 +23,12 @@ class multiTimeAttention(nn.Module):
 
     def attention(self, query, key, value, mask=None, dropout=None):
         "Compute 'Scaled Dot Product Attention'"
-        print(f"attention query shape: {query.shape}, key shape: {key.shape}, value shape: {value.shape}, mask shape: {mask.shape}")
         # attention query shape: torch.Size([1, 1, 128, 128]), key shape: torch.Size([128, 1, 190, 128]), value shape: torch.Size([128, 1, 190, 82]), mask shape: torch.Size([128, 1, 190, 82])
         dim = value.size(-1)
         d_k = query.size(-1)
         scores = torch.matmul(query, key.transpose(-2, -1)) \
                  / math.sqrt(d_k)
         scores = scores.unsqueeze(-1).repeat_interleave(dim, dim=-1)
-        print("scores shape: ", scores.shape) # (128, 1, 128, 190, 82)
-        print("mask shape: ", mask.shape) # (128, 1, 190, 82)
         if mask is not None:
             scores = scores.masked_fill(mask.unsqueeze(-3) == 0, -1e9)
         p_attn = F.softmax(scores, dim=-2)
@@ -41,16 +38,11 @@ class multiTimeAttention(nn.Module):
 
     def forward(self, query, key, value, mask=None, dropout=None):
         "Compute 'Scaled Dot Product Attention'"
-        print(
-            f"forward query shape: {query.shape}, key shape: {key.shape}, value shape: {value.shape}, mask shape: {mask.shape}")
         batch, seq_len, dim = value.size()
-        print(f"batch: {batch}, seq_len: {seq_len}, dim: {dim}") # 128, 190, 768
         if mask is not None:
             # Same mask applied to all h heads.
             mask = mask.unsqueeze(1)
-        print("mask shape: ", mask.shape)
         value = value.unsqueeze(1)
-        print("value shape: ", value.shape)
         query, key = [l(x).view(x.size(0), -1, self.h, self.embed_time_k).transpose(1, 2)
                       for l, x in zip(self.linears, (query, key))]
         x, _ = self.attention(query, key, value, mask, dropout)
@@ -71,7 +63,6 @@ class enc_mtan(nn.Module):
         self.device = device
         self.nhidden = nhidden
         self.query = query
-        print("query shape: ", query.shape)
         self.patch_len = patch_len
         self.stride = stride
         self.patch_num = 0
@@ -89,7 +80,6 @@ class enc_mtan(nn.Module):
 
     def learn_time_embedding(self, tt):
         tt = tt.to(self.device)
-        print("tt shape: ", tt.shape) # (128, 2, 100)   (1, 256)
         tt = tt.unsqueeze(-1)
         out2 = torch.sin(self.periodic(tt))
         out1 = self.linear(tt)
@@ -116,7 +106,6 @@ class enc_mtan(nn.Module):
             query = self.time_embedding(self.query.unsqueeze(0), self.embed_time).to(self.device)
 
         out = self.time_att(query, key, x, mask)  # batch_size, num_ref_points, embed_dim
-        print("out shape: ", out.shape)
 
         batch_size, seq_len, dim = out.shape
 
@@ -124,7 +113,6 @@ class enc_mtan(nn.Module):
         out = rearrange(out, 'b l m -> b m l')
         out = self.padding_patch_layer(out)
         out = out.unfold(dimension=-1, size=self.patch_len, step=self.stride)
-        print("out shape", out.shape) # (batch, dim, num_patches, patch_len)
         out = out.permute(0, 2, 3, 1).contiguous() # (batch, num_patches, patch_len, dim)
 
         # self.patch_num = out.shape[1]
@@ -133,6 +121,5 @@ class enc_mtan(nn.Module):
         out = out.view(batch_size * self.patch_num, self.patch_len, self.nhidden)
         _, (out, _) = self.local_lstm(out)
         out = out.squeeze(0).view(batch_size, self.patch_num, self.nhidden)
-        print("out shape: ", out.shape) # (batch*feature, num_patches, embed)
 
         return out

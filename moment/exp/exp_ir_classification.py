@@ -23,12 +23,9 @@ class TokenClassificationHead(nn.Module):
         self.proj = nn.Linear(n_channels * d_model, num_class)
 
     def forward(self, x, input_mask: torch.Tensor = None):
-        print("x shape", x.shape) # (64, 6, 6144)
         x = x.mean(1)
-        print('x shape', x.shape)        # (64, 6144)
         x = x.unsqueeze(1)
         x = x.repeat(1, self.seq_len, 1)
-        print('x shape', x.shape)
         logits = self.proj(x)
 
         return logits                     # (B, L, K)
@@ -43,7 +40,6 @@ class Exp_IR_Classification(Exp_Basic):
         self.test_loader = self.all_data.data_objects["test_dataloader"]
         self.dim = self.all_data.data_objects["input_dim"]
         self.num_class = self.all_data.num_class
-        print("self.num_class", self.num_class)
         self.model = self._build_model()
         self.train_accuracies = []
         self.vali_accuracies = []
@@ -60,20 +56,6 @@ class Exp_IR_Classification(Exp_Basic):
         return data_set, data_loader
 
     def _build_model(self):
-        # if self.args.classify_pertp:
-        #     model = MOMENTPipeline.from_pretrained(
-        #         "AutonLab/MOMENT-1-small",
-        #         model_kwargs={
-        #             "task_name": 'embedding',
-        #             "freeze_encoder": True,
-        #             "freeze_embedder": True,
-        #         }
-        #     )
-        #     model.init()
-        #     d_model = model.config.d_model
-        #     patch_len = model.config.patch_len
-        #     model.head = TokenClassificationHead(d_model, self.args.num_classes, patch_len)
-        # else:
         model = MOMENTPipeline.from_pretrained(
             "AutonLab/MOMENT-1-small",
             model_kwargs={
@@ -87,12 +69,10 @@ class Exp_IR_Classification(Exp_Basic):
         model.init()
         if self.args.classify_pertp:
             n_channel = model.config.n_channels
-            print("n_channel", n_channel)
             seq_len = self.args.seq_len
             d_model = model.config.d_model
             model.head = TokenClassificationHead(n_channel, seq_len, d_model, self.args.num_classes)
         model.to(self.device)
-        print("device:", self.device)
         return model
 
     def _select_optimizer(self):
@@ -106,13 +86,6 @@ class Exp_IR_Classification(Exp_Basic):
         return criterion
 
     def train(self, setting):
-        # train_data, train_loader = self._get_data(flag='train')
-        # vali_data, vali_loader = self._get_data(flag='val')
-        # test_data, test_loader = self._get_data(flag='test')
-        # all_data = self._get_data(flag=None)
-        # train_loader = all_data.data_objects["train_dataloader"]
-        # vali_loader = all_data.data_objects["val_dataloader"]
-        # test_loader = all_data.data_objects["test_dataloader"]
         dim = self.all_data.data_objects["input_dim"]
 
         path = os.path.join(self.args.checkpoints, setting)
@@ -127,10 +100,6 @@ class Exp_IR_Classification(Exp_Basic):
         model_optim = self._select_optimizer()
         criterion = self._select_criterion()
 
-        # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(model_optim, T_max=self.args.tmax, eta_min=1e-8)
-
-        # monitored_layer_name = "gpt2.h.0.attn.c_attn.weight"
-
         for epoch in range(self.args.train_epochs):
             iter_count = 0
             train_loss = []
@@ -141,37 +110,16 @@ class Exp_IR_Classification(Exp_Basic):
             epoch_time = time.time()
 
             for i, (batch_x, label) in enumerate(self.train_loader):
-                num_zeros = (label == 0).sum().item()
-                num_ones = (label == 1).sum().item()
-
-                print(f"Batch {i}: # of labels == 0: {num_zeros}, # of labels == 1: {num_ones}")
-
                 iter_count += 1
                 model_optim.zero_grad()
 
                 batch_x = batch_x.float().to(self.device)
                 observed_data, observed_mask, observed_tp = batch_x[:, :, :dim], batch_x[:, :, dim:2 * dim], batch_x[:,
                                                                                                              :, -1]
-                # time_mask_bool = observed_mask.bool().all(dim=-1)
-                # time_mask_int = time_mask_bool.int()
                 batch_x = observed_data.permute(0, 2, 1).contiguous()
-                print("batch_x shape: ", batch_x.shape)
                 label = label.to(self.device)
 
-                print("batch_x shape: ", batch_x.shape)  # 128, 190, 83
-                print("label shape: ", label.shape)  # 128
-
-                # outputs = self.model(x_enc=batch_x, input_mask=time_mask_int)
                 outputs = self.model(x_enc=batch_x)
-
-                print(outputs)
-                print("embeddings shape", outputs.embeddings.shape)
-
-                # print(
-                #     f"Label min: {label.min()}, Label max: {label.max()}, Label dtype: {label.dtype}, Label shape: {label.shape}")
-                # print(f"outputs.shape: {outputs['outputs_time'].shape}, outputs.dtype: {outputs['outputs_time'].dtype}")
-                # print(f"label.shape: {label.shape}, label.dtype: {label.dtype}")
-                # print(f"label unique values: {torch.unique(label)}")
                 
                 if self.args.classify_pertp:
                     outputs = outputs.logits.reshape(-1, self.args.num_classes)
@@ -193,14 +141,9 @@ class Exp_IR_Classification(Exp_Basic):
                     time_now = time.time()
 
                 loss.backward()
-                # nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=4.0)
                 model_optim.step()
 
-                # monitored_layer = dict(self.model.named_parameters())[monitored_layer_name]
-
             print("Epoch: {} cost time: {}".format(epoch + 1, time.time() - epoch_time))
-
-            # print(f"Epoch {epoch + 1}, After update: {monitored_layer.data}")
 
             train_loss = np.average(train_loss)
             self.train_losses.append(train_loss)
@@ -210,8 +153,6 @@ class Exp_IR_Classification(Exp_Basic):
             train_probs = torch.nn.functional.softmax(train_preds)
             train_predictions = torch.argmax(train_probs, dim=1)
             train_trues = train_trues.flatten()
-            # calculate AUPRC
-            # train_auprc = self._select_metric(train_probs, train_trues)
             # calculate accuracy
             correct = (train_predictions == train_trues).float()
             train_trues = train_trues.detach().cpu().numpy()
@@ -267,18 +208,10 @@ class Exp_IR_Classification(Exp_Basic):
                             vali_loss, vali_accuracy, vali_auprc, vali_auc, vali_precision, vali_recall, vali_F1, test_loss, test_accuracy,
                             test_auprc, test_auc, test_precision, test_recall, test_F1))
 
-            # if self.args.cos:
-            #     scheduler.step()
-            #     print("lr = {}".format(model_optim.param_groups[0]['lr']))
-            # else:
-            #     adjust_learning_rate(model_optim, epoch + 1, self.args)
-
-            # early_stopping(-vali_accuracy, self.model, path)
             if self.args.data == 'P12' or self.args.data == 'P19' or self.args.data == 'eICU' or self.args.data == 'MIMIC':
                 early_stopping(-vali_auprc, self.model, path)
             elif self.args.data == 'PAM' or self.args.data == 'activity':
                 early_stopping(-vali_accuracy, self.model, path)
-            # early_stopping(vali_loss, self.model, path)
             if early_stopping.early_stop:
                 print("Early stopping")
                 break
@@ -303,13 +236,9 @@ class Exp_IR_Classification(Exp_Basic):
                 batch_x = batch_x.float().to(self.device)
                 observed_data, observed_mask, observed_tp = batch_x[:, :, :dim], batch_x[:, :, dim:2 * dim], batch_x[:,
                                                                                                              :, -1]
-                # time_mask_bool = observed_mask.bool().all(dim=-1)
-                # time_mask_int = time_mask_bool.int()
                 batch_x = observed_data.permute(0, 2, 1).contiguous()
-                print("batch_x shape: ", batch_x.shape)
                 label = label.to(self.device)
 
-                # outputs = self.model(x_enc=batch_x, input_mask=time_mask_int)
                 outputs = self.model(x_enc=batch_x)
 
                 if self.args.classify_pertp:
@@ -329,12 +258,10 @@ class Exp_IR_Classification(Exp_Basic):
 
         preds = torch.cat(preds, 0)
         trues = torch.cat(trues, 0)
-        # print(f'{vali_data.x_data.shape} shape: {preds.shape} {trues.shape}')
-        # print('test shape:', preds.shape, trues.shape)
+
         probs = torch.nn.functional.softmax(preds)  # (total_samples, num_classes) est. prob. for each class and sample
         predictions = torch.argmax(probs, dim=1).cpu().numpy()  # (total_samples,) int class index for each sample
         trues = trues.flatten()
-        # auprc = self._select_metric(probs, trues)
         trues = trues.cpu().numpy()
 
         if args.data == 'P12' or args.data == 'P19' or args.data == 'eICU' or args.data == 'PhysioNet' or args.data == 'MIMIC':
@@ -351,10 +278,6 @@ class Exp_IR_Classification(Exp_Basic):
             F1 = 2 * (precision * recall) / (precision + recall)
         accuracy = np.mean(predictions == trues)
 
-        # Saving true labels and predictions
-        # np.savetxt('./results/vali_trues.txt', trues, fmt='%d')
-        # np.savetxt('./results/vali_predictions.txt', predictions, fmt='%d')
-
         self.model.train()
         if args.data == 'P12' or args.data == 'P19' or args.data == 'eICU' or args.data == 'PhysioNet' or args.data == 'MIMIC':
             return total_loss, accuracy, auprc, auc
@@ -368,7 +291,6 @@ class Exp_IR_Classification(Exp_Basic):
         if test:
             print("Loading model")
             self.model.load_state_dict(torch.load(os.path.join('./checkpoints/' + setting, 'checkpoint.pth')))
-            print(os.path.join('./checkpoints/' + setting, 'checkpoint.pth'))
 
         probs = []
         trues = []
@@ -382,13 +304,9 @@ class Exp_IR_Classification(Exp_Basic):
                 batch_x = batch_x.float().to(self.device)
                 observed_data, observed_mask, observed_tp = batch_x[:, :, :dim], batch_x[:, :, dim:2 * dim], batch_x[:,
                                                                                                              :, -1]
-                # time_mask_bool = observed_mask.bool().all(dim=-1)
-                # time_mask_int = time_mask_bool.int()
                 batch_x = observed_data.permute(0, 2, 1).contiguous()
-                print("batch_x shape: ", batch_x.shape)
                 batch_y = batch_y.float().long().to(self.device)
 
-                # outputs = self.model(x_enc=batch_x, input_mask=time_mask_int)
                 outputs = self.model(x_enc=batch_x)
 
                 if self.args.classify_pertp:
@@ -397,23 +315,18 @@ class Exp_IR_Classification(Exp_Basic):
                 else:
                     outputs = outputs.logits
 
-                # pred = outputs
                 prob = outputs
-                print("prob shape", prob.shape)
                 true = batch_y
 
-                # preds.append(pred)
                 probs.append(prob)
                 trues.append(true)
 
-        # preds = torch.cat(preds, 0)
         probs = torch.cat(probs, 0)
         trues = torch.cat(trues, 0)
 
         probs = torch.nn.functional.softmax(probs)  # (total_samples, num_classes) est. prob. for each class and sample
         predictions = torch.argmax(probs, dim=1).cpu().numpy()  # (total_samples,) int class index for each sample
         trues = trues.flatten()
-        # auprc = self._select_metric(probs, trues)
         trues = trues.cpu().numpy()
         accuracy = np.mean(predictions == trues)
 
@@ -435,9 +348,6 @@ class Exp_IR_Classification(Exp_Basic):
         if not os.path.exists(folder_path):
             os.makedirs(folder_path)
 
-        # print('Accuracy:{}'.format(accuracy))
-        # print('AUPRC:{}'.format(auprc))
-        # print('AUC:{}'.format(auc))
         if self.args.data == 'P12' or self.args.data == 'P19' or self.args.data == 'eICU' or self.args.data == 'MIMIC':
             f = open(os.path.join(folder_path, "result_classification.txt"), 'a')
             f.write(setting + "  \n")
@@ -466,10 +376,6 @@ class Exp_IR_Classification(Exp_Basic):
             f.write('\n')
             f.write('\n')
             f.close()
-
-        # np.save(folder_path + 'metrics.npy', np.array([mae, mse, rmse, mape, mspe]))
-        # np.save(folder_path + 'pred.npy', preds)
-        # np.save(folder_path + 'true.npy', trues)
 
         if self.args.data == 'P12' or self.args.data == 'P19' or self.args.data == 'eICU' or self.args.data == 'MIMIC':
             return accuracy, auprc, auc

@@ -140,7 +140,7 @@ def eval_epoch(model, validation_data, pred_loss_func, opt, classifier, save_res
             out = model(observed_tp, observed_data, observed_mask, tau=tau) # [B,L,K,D]
 
             sup_pred = classifier(out)
-            print("sup_pred shape", sup_pred.shape) # (batch, num_class)   active: (batch, timestamps(50), num_class)
+            
             if sup_pred.dim() == 1:
                 sup_pred = sup_pred.unsqueeze(0)
 

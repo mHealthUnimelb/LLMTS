@@ -116,21 +116,6 @@ def preprocess_P12(PT_dict, arr_outcomes, quantization):
 
     return total
 
-# def preprocess_P12(PT_dict, arr_outcomes):
-#     total = []
-#     for i, patient in enumerate(PT_dict):
-#         length = patient['length']
-#         record_id = patient['id']
-#         tt = torch.squeeze(torch.tensor(patient['time'][:length]), 1)
-#         vals = torch.tensor(patient['arr'][:length, :], dtype=torch.float32)
-#         m = np.zeros(shape=patient['arr'][:length, :].shape)
-#         m[patient['arr'][:length, :].nonzero()] = 1
-#         mask = torch.tensor(m, dtype=torch.float32)
-#         outcome = torch.tensor(arr_outcomes[i][-1], dtype=torch.float32)
-#         total.append((record_id, tt, vals, mask, outcome))
-#
-#     return total
-
 
 def preprocess_P19(PT_dict, arr_outcomes, labels_ts):
     total = []
@@ -286,66 +271,42 @@ def balanced_batch_sampler(train_data, true_labels, batch_size, n_classes):
 
 
 def get_data(args, dataset, device, q, upsampling_batch=True, flag=1):
-    print("upsampling_batch", upsampling_batch)
-    print("args.classif", args.classif)
     if dataset == 'P12':
-        total_dataset = PhysioNet('data/physionet',
+        total_dataset = PhysioNet('../datasets/physionet',
                                   quantization=q,
                                   download=True,
                                   device=device)
-        PT_dict = np.load('./data/P12data/processed_data/PTdict_list.npy', allow_pickle=True)
-        arr_outcomes = np.load('./data/P12data/processed_data/arr_outcomes.npy', allow_pickle=True)
-        # total_dataset = preprocess_P12(PT_dict, arr_outcomes, args.quantization)
+        PT_dict = np.load('../datasets/P12data/processed_data/PTdict_list.npy', allow_pickle=True)
+        arr_outcomes = np.load('../datasets/P12data/processed_data/arr_outcomes.npy', allow_pickle=True)
         idx_train, idx_val, idx_test = np.load(args.data_split_path, allow_pickle=True)
     elif dataset == 'P19':
         PT_dict = np.load('../P19data/processed_data/PT_dict_list_6.npy', allow_pickle=True)
         labels_ts = np.load('../P19data/processed_data/labels_ts.npy', allow_pickle=True)
         labels_demogr = np.load('../P19data/processed_data/labels_demogr.npy', allow_pickle=True)
         arr_outcomes = np.load('../P19data/processed_data/arr_outcomes_6.npy', allow_pickle=True)
-
         total_dataset = preprocess_P19(PT_dict, arr_outcomes, labels_ts)
     elif dataset == 'eICU':
         PT_dict = np.load('../../../eICUdata/processed_data/PTdict_list.npy', allow_pickle=True)
         labels_ts = np.load('../../../eICUdata/processed_data/eICU_ts_vars.npy', allow_pickle=True)
         labels_demogr = np.load('../../../eICUdata/processed_data/eICU_static_vars.npy', allow_pickle=True)
         arr_outcomes = np.load('../../../eICUdata/processed_data/arr_outcomes.npy', allow_pickle=True)
-
         total_dataset = preprocess_eICU(PT_dict, arr_outcomes, labels_ts)
-
     elif dataset == 'PAM':
         PT_dict = np.load('./data/PAMdata/processed_data/PTdict_list.npy', allow_pickle=True)
         arr_outcomes = np.load('./data/PAMdata/processed_data/arr_outcomes.npy', allow_pickle=True)
-
         total_dataset = preprocess_PAM(PT_dict, arr_outcomes)
-
     elif dataset == 'MIMIC':
-        total_dataset = torch.load('./data/MIMIC/mimic_classification/processed/mimic.pt', map_location='cpu')
+        total_dataset = torch.load('../datasets/MIMIC/mimic_classification/processed/mimic.pt', map_location='cpu')
         total_dataset = [(record_id, tt, vals, mask, torch.tensor(label)) for
                          (record_id, tt, vals, mask, label) in total_dataset]
-
     elif dataset == 'activity':
-        # args.pred_window = 1000
-        total_dataset = PersonActivity('datasets/activity/', n_samples = int(1e8), download=True, device = device)
-        # total_dataset = torch.load('./data/activiaty/processed/data.pt', map_location='cpu')
-
-    print('len(total_dataset):', len(total_dataset))
-    print("total_dataset[0]:", total_dataset[0])
+        total_dataset = PersonActivity('../datasets/activity/', n_samples = int(1e8), download=True, device = device)
 
     global_tt = torch.unique(torch.cat([tpl[1] for tpl in total_dataset]), sorted=True)
 
-    # if split_type == 'random':
-    #     # Shuffle and split
-    #     train_data, test_data = model_selection.train_test_split(total_dataset, train_size=0.9,
-    #                                                              shuffle=True)  # 80% train, 10% validation, 10% test
-
-    # train_data = []
-    # val_data = []
-    # test_data = []
     if dataset == 'P12':
         # get recorde_id from PTdict_list.npy
-        print("idx_train[0]", idx_train[0])
         train_record_ids = [PT_dict[i]['id'] for i in idx_train]
-        print("train_record_ids[0]", train_record_ids[0])
         val_record_ids = [PT_dict[i]['id'] for i in idx_val]
         test_record_ids = [PT_dict[i]['id'] for i in idx_test]
 
@@ -356,53 +317,15 @@ def get_data(args, dataset, device, q, upsampling_batch=True, flag=1):
         train_data = [record_dict[rid] for rid in train_record_ids]
         val_data = [record_dict[rid] for rid in val_record_ids]
         test_data = [record_dict[rid] for rid in test_record_ids]
-
-        print("train_data[0]:", train_data[0])
-        print("val_data[0]:", val_data[0])
-        print("test_data[0]:", test_data[0])
     elif dataset == 'MIMIC' or dataset == 'activity':
         seen_data, test_data = model_selection.train_test_split(total_dataset, train_size=0.8, random_state=args.seed,
                                                                 shuffle=True)
         train_data, val_data = model_selection.train_test_split(seen_data, train_size=0.75, random_state=args.seed,
                                                                 shuffle=False)
-        print("Dataset n_samples:", len(total_dataset), len(train_data), len(val_data), len(test_data))
     else:
         train_data = [total_dataset[i] for i in idx_train]
-        print("train_data[0]:", train_data[0])
         val_data = [total_dataset[i] for i in idx_val]
-        print("val_data[0]:", val_data[0])
         test_data = [total_dataset[i] for i in idx_test]
-        print("test_data[0]:", test_data[0])
-
-    # elif split_type == 'age' or split_type == 'gender':
-    #     if dataset == 'P12':
-    #         prefix = 'mtand'
-    #     elif dataset == 'P19':
-    #         prefix = 'P19'
-    #     elif dataset == 'eICU':   # possible only with split_type == 'gender'
-    #         prefix = 'eICU'
-    #
-    #     if split_type == 'age':
-    #         if dataset == 'eICU':
-    #             print('\nCombination of eICU dataset and age split is not possible.\n')
-    #         if reverse == False:
-    #             idx_train = np.load('%s_idx_under_65.npy' % prefix, allow_pickle=True)
-    #             idx_vt = np.load('%s_idx_over_65.npy' % prefix, allow_pickle=True)
-    #         else:
-    #             idx_train = np.load('%s_idx_over_65.npy' % prefix, allow_pickle=True)
-    #             idx_vt = np.load('%s_idx_under_65.npy' % prefix, allow_pickle=True)
-    #     elif split_type == 'gender':
-    #         if reverse == False:
-    #             idx_train = np.load('%s_idx_male.npy' % prefix, allow_pickle=True)
-    #             idx_vt = np.load('%s_idx_female.npy' % prefix, allow_pickle=True)
-    #         else:
-    #             idx_train = np.load('%s_idx_female.npy' % prefix, allow_pickle=True)
-    #             idx_vt = np.load('%s_idx_male.npy' % prefix, allow_pickle=True)
-    #
-    #     np.random.shuffle(idx_train)
-    #     np.random.shuffle(idx_vt)
-    #     train_data = [total_dataset[i] for i in idx_train]
-    #     test_data = [total_dataset[i] for i in idx_vt]
 
     # tt: time steps, vals: observed values, mask: which values are observed
     record_id, tt, vals, mask, labels = train_data[0]
@@ -410,87 +333,18 @@ def get_data(args, dataset, device, q, upsampling_batch=True, flag=1):
     input_dim = vals.size(-1)  # determine the number of features. vals: [T, D], where D is the number of features
     data_min, data_max = get_data_min_max(total_dataset,
                                           device)  # Compute the minimum and maximum values across all features in the entire dataset
-    # batch_size = 128
     batch_size = min(len(train_data),
                      args.batch_size)  # ensures the batch size isn't larger than the dataset or user-specified number
 
     if flag:
         if args.classif:
-            # if split_type == 'random':
-            #     train_data, val_data = model_selection.train_test_split(train_data, train_size=0.8889,
-            #                                                             shuffle=False)  # 80% train, 10% validation, 10% test
-            print("train len:", len(train_data))
-            print("val len:", len(val_data))
-            print("test len:", len(test_data))
-            # elif split_type == 'age' or split_type == 'gender':
-            #     val_data, test_data = model_selection.train_test_split(test_data, train_size=0.5, shuffle=False)
-
-            # if dataset == 'P12':
-            #     num_all_features = 36
-            # elif dataset == 'P19':
-            #     num_all_features = 34
-            # elif dataset == 'eICU':
-            #     num_all_features = 14
-            # elif dataset == 'PAM':
-            #     num_all_features = 17
-
-            # num_missing_features = round(missing_ratio * num_all_features)
-            # if feature_removal_level == 'sample':
-            #     for i, tpl in enumerate(val_data):
-            #         idx = np.random.choice(num_all_features, num_missing_features, replace=False)
-            #         _, _, values, _, _ = tpl
-            #         tpl = list(tpl)
-            #         values[:, idx] = torch.zeros(values.shape[0], num_missing_features)
-            #         tpl[2] = values
-            #         val_data[i] = tuple(tpl)
-            #     for i, tpl in enumerate(test_data):
-            #         idx = np.random.choice(num_all_features, num_missing_features, replace=False)
-            #         _, _, values, _, _ = tpl
-            #         tpl = list(tpl)
-            #         values[:, idx] = torch.zeros(values.shape[0], num_missing_features)
-            #         tpl[2] = values
-            #         test_data[i] = tuple(tpl)
-            # elif feature_removal_level == 'set':
-            #     if dataset == 'P12':
-            #         dict_params = total_dataset.params_dict
-            #         density_scores_names = np.load('../saved/IG_density_scores_P12.npy', allow_pickle=True)[:, 1]
-            #         idx = [dict_params[name] for name in density_scores_names[:num_missing_features]]
-            #     elif dataset == 'P19':
-            #         labels_ts = np.load('../../../P19data/processed_data/labels_ts.npy', allow_pickle=True)
-            #         dict_params = {label: i for i, label in enumerate(labels_ts[:-1])}
-            #         density_scores_names = np.load('../saved/IG_density_scores_P19.npy', allow_pickle=True)[:, 1]
-            #         idx = [dict_params[name] for name in density_scores_names[:num_missing_features]]
-            #     elif dataset == 'eICU':
-            #         labels_ts = np.load('../../../eICUdata/processed_data/eICU_ts_vars.npy', allow_pickle=True)
-            #         dict_params = {label: i for i, label in enumerate(labels_ts)}
-            #         density_scores_names = np.load('../saved/IG_density_scores_eICU.npy', allow_pickle=True)[:, 1]
-            #         idx = [dict_params[name] for name in density_scores_names[:num_missing_features]]
-            #     elif dataset == 'PAM':
-            #         density_scores_indices = np.load('../saved/IG_density_scores_PAM.npy', allow_pickle=True)[:, 0]
-            #         idx = list(map(int, density_scores_indices[:num_missing_features]))
-            #
-            #     for i, tpl in enumerate(val_data):
-            #         _, _, values, _, _ = tpl
-            #         tpl = list(tpl)
-            #         values[:, idx] = torch.zeros(values.shape[0], num_missing_features)
-            #         tpl[2] = values
-            #         val_data[i] = tuple(tpl)
-            #     for i, tpl in enumerate(test_data):
-            #         _, _, values, _, _ = tpl
-            #         tpl = list(tpl)
-            #         values[:, idx] = torch.zeros(values.shape[0], num_missing_features)
-            #         tpl[2] = values
-            #         test_data[i] = tuple(tpl)
-
             if upsampling_batch:
                 train_data_upsamled = []
                 true_labels = np.array([float(x[4].item()) for x in train_data])
                 # true_labels = np.array(list(map(lambda x: float(x[7]), np.array(train_data)[:, 4])))
                 if dataset == 'P12' or dataset == 'P19' or dataset == 'eICU':  # 2 classes
                     idx_0 = np.where(true_labels == 0)[0]
-                    print("idx_0 length", len(idx_0))
                     idx_1 = np.where(true_labels == 1)[0]
-                    print("idx_1 length", len(idx_1))
                     # Method 1
                     # for _ in range(len(true_labels) // batch_size):
                     #     indices = random_sample(idx_0, idx_1, batch_size)
@@ -577,94 +431,6 @@ def get_data(args, dataset, device, q, upsampling_batch=True, flag=1):
     return data_objects  # return all the prepared data and metadata as a dictionary
 
 
-
-# def variable_time_collate_fn(batch, args, device=torch.device("cpu"), classify=False, activity=False,
-#                              data_min=None, data_max=None):
-#     """
-#     Expects a batch of time series data in the form of (record_id, tt, vals, mask, labels) where
-#       - record_id is a patient id
-#       - tt is a 1-dimensional tensor containing T time values of observations.
-#       - vals is a (T, D) tensor containing observed values for D variables.
-#       - mask is a (T, D) tensor containing 1 where values were observed and 0 otherwise.
-#       - labels is a list of labels for the current patient, if labels are available. Otherwise None.
-#     Returns:
-#       combined_tt: The union of all time observations.
-#       combined_vals: (M, T, D) tensor containing the observed values.
-#       combined_mask: (M, T, D) tensor containing 1 where values were observed and 0 otherwise.
-#     """
-#     print("run add 0")
-#     D = batch[0][2].shape[1]
-#     # number of labels
-#     N = batch[0][-1].shape[1] if activity else 1
-#     len_tt = [ex[1].size(0) for ex in batch]
-#     maxlen = np.max(len_tt)
-#     enc_combined_tt = torch.zeros([len(batch), maxlen]).to(device)
-#     enc_combined_vals = torch.zeros([len(batch), maxlen, D]).to(device)
-#     enc_combined_mask = torch.zeros([len(batch), maxlen, D]).to(device)
-
-#     for b, (record_id, tt, vals, mask, labels) in enumerate(batch):
-#         currlen = tt.size(0)
-#         enc_combined_tt[b, :currlen] = tt.to(device)
-#         enc_combined_vals[b, :currlen] = vals.to(device)
-#         enc_combined_mask[b, :currlen] = mask.to(device)
-
-#     combined_tt, inverse_indices = torch.unique(torch.cat([ex[1] for ex in batch]), sorted=True, return_inverse=True)
-#     combined_tt = combined_tt.to(device)
-#     combined_tt = combined_tt.unsqueeze(0).expand(len(batch), -1)
-#     print(combined_tt.shape)
-
-#     offset = 0
-#     combined_vals = torch.zeros([len(batch), combined_tt.shape[1], D]).to(device)
-#     combined_mask = torch.zeros([len(batch), combined_tt.shape[1], D]).to(device)
-
-#     combined_labels = None
-#     N_labels = 1
-
-#     if classify:
-#         if activity:
-#             combined_labels = torch.zeros([len(batch), maxlen, N]).to(device)
-#         else:
-#             combined_labels = torch.zeros(len(batch), N_labels) + torch.tensor(float('nan'))
-#             combined_labels = combined_labels.to(device=device)
-
-#     for b, (record_id, tt, vals, mask, labels) in enumerate(batch):
-#         tt = tt.to(device)
-#         vals = vals.to(device)
-#         mask = mask.to(device)
-#         if labels is not None:
-#             labels = labels.to(device)
-
-#         indices = inverse_indices[offset:offset + len(tt)]
-#         offset += len(tt)
-
-#         combined_vals[b, indices] = vals
-#         combined_mask[b, indices] = mask
-
-#         if labels is not None:
-#             if classify:
-#                 if activity:
-#                     combined_labels[b, indices] = labels
-#                 else:
-#                     combined_labels[b] = labels
-
-#     if not activity:
-#         combined_vals, _, _ = normalize_masked_data(combined_vals, combined_mask,
-#                                                     att_min=data_min, att_max=data_max)
-#         enc_combined_vals, _, _ = normalize_masked_data(enc_combined_vals, enc_combined_mask,
-#                                                         att_min=data_min, att_max=data_max)
-
-#     if torch.max(combined_tt) != 0.:
-#         combined_tt = combined_tt / torch.max(combined_tt)
-#         enc_combined_tt = enc_combined_tt / torch.max(enc_combined_tt)
-
-#     combined_data = torch.cat(
-#         (combined_vals, combined_mask, combined_tt.unsqueeze(-1)), 2)
-
-#     if classify:
-#         return combined_data, combined_labels
-#     else:
-#         return combined_data
-
 def variable_time_collate_fn(batch, args, device=torch.device("cpu"), classify=False,
                              data_min=None, data_max=None, global_tt=None):
     """
@@ -679,10 +445,7 @@ def variable_time_collate_fn(batch, args, device=torch.device("cpu"), classify=F
         combined_vals: (M, T, D) tensor containing the observed values.
         combined_mask: (M, T, D) tensor containing 1 where values were observed and 0 otherwise.
     """
-    # print("batch shape:", batch.shape)
     D = batch[0][2].shape[1]
-    # combined_tt, inverse_indices = torch.unique(torch.cat([ex[1] for ex in batch]), sorted=True, return_inverse=True)
-    # combined_tt = combined_tt.to(device)
     combined_tt = global_tt.to(device)
 
     combined_vals = torch.zeros([len(batch), len(combined_tt), D]).to(device)
@@ -693,7 +456,6 @@ def variable_time_collate_fn(batch, args, device=torch.device("cpu"), classify=F
 
     combined_labels = torch.zeros(len(batch), N_labels) + torch.tensor(float('nan'))
     combined_labels = combined_labels.to(device=device)
-    # combined_tt = combined_tt.unsqueeze(0).expand(len(batch), -1)
 
     for b, (record_id, tt, vals, mask, labels) in enumerate(batch):
         tt = tt.to(device)
@@ -702,8 +464,6 @@ def variable_time_collate_fn(batch, args, device=torch.device("cpu"), classify=F
         if labels is not None:
             labels = labels.to(device)
 
-        # indices = inverse_indices[offset:offset + len(tt)]
-        # offset += len(tt)
         indices = torch.searchsorted(combined_tt, tt)
 
         combined_vals[b, indices] = vals
@@ -711,7 +471,6 @@ def variable_time_collate_fn(batch, args, device=torch.device("cpu"), classify=F
 
         if labels is not None:
             combined_labels[b] = labels
-
 
     combined_vals, _, _ = normalize_masked_data(combined_vals, combined_mask, att_min=data_min, att_max=data_max)
 

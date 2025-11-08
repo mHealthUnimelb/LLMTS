@@ -1,5 +1,0 @@
-ir_classification_P12_S2IPLLM_P12_phy12_split5_ftM_sl2880_ll1_pl0_dm768_nh8_el2_dl1_df2048_fc1_ebtimeF_dtTrue_Exp_0  
-Accuracy:0.8390325271059216
-AUPRC:0.4350208486302096
-AUC:0.7791493291756457
-

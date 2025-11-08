@@ -416,8 +416,6 @@ def get_physionet_data(args, device, q=0.016, flag=1):
     test_data_combined = variable_time_collate_fn(test_data, device, input_dim=input_dim, data_min=data_min,
                                                   data_max=data_max)
 
-    # norm_mean = train_data_combined[0][:, :, :input_dim].mean(dim=0, keepdim=True).cpu()
-
     print(train_data_combined[1].sum(
     ), test_data_combined[1].sum())
     print(train_data_combined[0].size(), train_data_combined[1].size(),
@@ -676,21 +674,17 @@ def balanced_batch_sampler(train_data, true_labels, batch_size, n_classes):
         for idx in batch_indices:
             upsampled_train_data.append(train_data[idx])
 
-        print("batch_indices: ", batch_indices)
-
     return upsampled_train_data
 
 
-def get_data(args, dataset, device, q=0.016, upsampling_batch=True):
-    print("upsampling_batch", upsampling_batch)
+def get_data(args, dataset, device, q=0.016, upsampling_batch=False):
     if dataset == 'P12':
-        total_dataset = PhysioNet('data/physionet',
+        total_dataset = PhysioNet('../datasets/physionet',
                                   quantization=q,
                                   download=True,
                                   device=device)
-        PT_dict = np.load('./data/P12data/processed_data/PTdict_list.npy', allow_pickle=True)
-        arr_outcomes = np.load('./data/P12data/processed_data/arr_outcomes.npy', allow_pickle=True)
-        # total_dataset = preprocess_P12(PT_dict, arr_outcomes, q)
+        PT_dict = np.load('../datasets/P12data/processed_data/PTdict_list.npy', allow_pickle=True)
+        arr_outcomes = np.load('../datasets/P12data/processed_data/arr_outcomes.npy', allow_pickle=True)
         idx_train, idx_val, idx_test = np.load(args.data_split_path, allow_pickle=True)
     elif dataset == 'P19':
         PT_dict = np.load('../P19data/processed_data/PT_dict_list_6.npy', allow_pickle=True)
@@ -708,23 +702,16 @@ def get_data(args, dataset, device, q=0.016, upsampling_batch=True):
         total_dataset = preprocess_eICU(PT_dict, arr_outcomes, labels_ts)
 
     elif dataset == 'PAM':
-        PT_dict = np.load('./data/PAMdata/processed_data/PTdict_list.npy', allow_pickle=True)
-        arr_outcomes = np.load('./data/PAMdata/processed_data/arr_outcomes.npy', allow_pickle=True)
+        PT_dict = np.load('../datasets/PAMdata/processed_data/PTdict_list.npy', allow_pickle=True)
+        arr_outcomes = np.load('../datasets/PAMdata/processed_data/arr_outcomes.npy', allow_pickle=True)
 
         total_dataset = preprocess_PAM(PT_dict, arr_outcomes)
 
     elif dataset == 'MIMIC':
-        total_dataset = torch.load('./data/MIMIC/mimic_classification/processed/mimic.pt', map_location='cpu')
+        total_dataset = torch.load('../datasets/MIMIC/mimic_classification/processed/mimic.pt', map_location='cpu')
         total_dataset = [(record_id, tt, vals, mask, torch.tensor(label)) for
                          (record_id, tt, vals, mask, label) in total_dataset]
 
-
-    print('len(total_dataset):', len(total_dataset))
-    print("total_dataset[0]:", total_dataset[0])
-
-    # train_data = []
-    # val_data = []
-    # test_data = []
     if dataset == 'P12':
         # get recorde_id from PTdict_list.npy
         train_record_ids = [PT_dict[i]['id'] for i in idx_train]
@@ -738,31 +725,20 @@ def get_data(args, dataset, device, q=0.016, upsampling_batch=True):
         train_data = [record_dict[rid] for rid in train_record_ids]
         val_data = [record_dict[rid] for rid in val_record_ids]
         test_data = [record_dict[rid] for rid in test_record_ids]
-
-        print("train_data[0]:", train_data[0])
-        print("val_data[0]:", val_data[0])
-        print("test_data[0]:", test_data[0])
     elif dataset == 'MIMIC':
-        print("seed", args.seed)
         seen_data, test_data = model_selection.train_test_split(total_dataset, train_size=0.8, random_state=args.seed,
                                                                 shuffle=True)
         train_data, val_data = model_selection.train_test_split(seen_data, train_size=0.75, random_state=args.seed,
                                                                 shuffle=False)
-        print("Dataset n_samples:", len(total_dataset), len(train_data), len(val_data), len(test_data))
     else:
         train_data = [total_dataset[i] for i in idx_train]
-        print("train_data[0]:", train_data[0])
         val_data = [total_dataset[i] for i in idx_val]
-        print("val_data[0]:", val_data[0])
         test_data = [total_dataset[i] for i in idx_test]
-        print("test_data[0]:", test_data[0])
 
     # few-shot learning
     if args.percent is not None:
-        print('original train data length', len(train_data))
         subset_len = int(len(train_data) * (args.percent/100))
         train_data = train_data[:subset_len]
-        print('train data length', len(train_data))
 
     # tt: time steps, vals: observed values, mask: which values are observed
     record_id, tt, vals, mask, labels = train_data[0]
@@ -770,7 +746,6 @@ def get_data(args, dataset, device, q=0.016, upsampling_batch=True):
     input_dim = vals.size(-1)  # determine the number of features. vals: [T, D], where D is the number of features
     data_min, data_max = get_data_min_max(total_dataset,
                                           device)  # Compute the minimum and maximum values across all features in the entire dataset
-    # batch_size = 128
     batch_size = min(len(train_data),
                      args.batch_size)  # ensures the batch size isn't larger than the dataset or user-specified number
     args.num_types = input_dim
@@ -779,12 +754,9 @@ def get_data(args, dataset, device, q=0.016, upsampling_batch=True):
         if upsampling_batch:
             train_data_upsamled = []
             true_labels = np.array([float(x[4].item()) for x in train_data])
-            # true_labels = np.array(list(map(lambda x: float(x[7]), np.array(train_data)[:, 4])))
             if dataset == 'P12' or dataset == 'P19' or dataset == 'eICU' or dataset == 'MIMIC':  # 2 classes
                 idx_0 = np.where(true_labels == 0)[0]
-                print("idx_0 length", len(idx_0))
                 idx_1 = np.where(true_labels == 1)[0]
-                print("idx_1 length", len(idx_1))
                 # Method 1
                 # for _ in range(len(true_labels) // batch_size):
                 #     indices = random_sample(idx_0, idx_1, batch_size)
@@ -818,13 +790,6 @@ def get_data(args, dataset, device, q=0.016, upsampling_batch=True):
                                                    data_max=data_max)
     test_data_combined = variable_time_collate_fn(test_data, device, input_dim=input_dim, data_min=data_min,
                                                   data_max=data_max)
-
-    # norm_mean = train_data_combined[0][:, :, :input_dim].mean(dim=0, keepdim=True).cpu()
-
-    print(train_data_combined[1].sum(
-    ), test_data_combined[1].sum())
-    print(train_data_combined[0].size(), train_data_combined[1].size(),
-          test_data_combined[0].size(), test_data_combined[1].size())
 
     train_data_combined = TensorDataset(
         train_data_combined[0], train_data_combined[1].long().squeeze())

@@ -1,3 +1,5 @@
+# Use 1D-CNN encoder (Time-LLM/FSCA)
+
 import torch
 import torch.nn as nn
 from einops import rearrange
@@ -6,66 +8,29 @@ from models.GPT2_arch import AccustumGPT2Model
 from layers.Embed import PatchEmbedding
 
 
-# class TokenEmbedding(nn.Module):
-#     def __init__(self, c_in, d_model):
-#         super(TokenEmbedding, self).__init__()
-#         padding = 1 if torch.__version__ >= '1.5.0' else 2
-#         self.tokenConv = nn.Conv1d(in_channels=c_in, out_channels=d_model,
-#                                    kernel_size=3, padding=padding, padding_mode='circular', bias=False)
-#         for m in self.modules():
-#             if isinstance(m, nn.Conv1d):
-#                 nn.init.kaiming_normal_(
-#                     m.weight, mode='fan_in', nonlinearity='leaky_relu')
-
-#     def forward(self, x):
-#         print("x shape", x.shape) # (batch, feature, seq_len)   (batch * channel, num_patch, patch_len)
-#         x = self.tokenConv(x.permute(0, 2, 1)).transpose(1, 2)
-#         return x
-
 class Encoder_PCA(nn.Module):
     def __init__(self, input_dim, word_embedding, hidden_dim=768, num_heads=12, num_encoder_layers=1, patch_len=16, stride=8, dropout=0.1):
         super(Encoder_PCA, self).__init__()
-        # self.linear = nn.Linear(input_dim, hidden_dim)
-
-        # encoder_layer = nn.TransformerEncoderLayer(d_model=hidden_dim, nhead=num_heads)
-        # self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_encoder_layers)
-
         self.patch_embedding = PatchEmbedding(hidden_dim, patch_len, stride, dropout)
-        # self.value_embedding = TokenEmbedding(patch_len, hidden_dim) # c_in == patch_len
 
         self.cross_attention = nn.MultiheadAttention(embed_dim=hidden_dim, num_heads=num_heads)
 
         self.word_embedding = word_embedding.T
 
     def forward(self, x):
-        print("x shape: ", x.shape) # (128, 2, 2500) (batch, feature, seq_len)
         B = x.shape[0] * x.shape[1] # batch * feature
-        # B = x.shape[0] # batch
         if self.word_embedding.ndim == 2:
             self.word_embedding = self.word_embedding.repeat(B, 1, 1)
         elif self.word_embedding.shape[0] != B:
             self.word_embedding = self.word_embedding[0].repeat(B, 1, 1)
 
-        # x = self.linear(x)
-        # print("x shape: ", x.shape) # (128, 2, 768)
-
-        # x = self.transformer_encoder(x.transpose(0, 1)).transpose(0, 1)
         x, n_vars = self.patch_embedding(x)
-        # x = self.value_embedding(x)
-        print("x shape: ", x.shape) # (batch * channel, num_patches, embed) (batch, feature, embed)
-
         x_time = x
-        print("x_time shape: ", x_time.shape) # (batch * channel, num_patches, embed) (batch, feature, embed)
-
         q = x.transpose(0, 1)
-        print("q shape: ", q.shape) # (2, 128, 768)
         k = v = self.word_embedding.transpose(0, 1)
-        print("k shape: ", k.shape) # (18, 128, 768)
         x, w_ = self.cross_attention(q, k, v)
-        print("weights shape: ", w_.shape) # (128, 2, 18)
 
         x = x.transpose(0, 1)
-        print("x shape: ", x.shape) # (batch * channel, num_patches, embed)
 
         return x_time, x
 
@@ -97,7 +62,6 @@ class Model(nn.Module):
         self.gpt2 = get_peft_model(self.gpt2, peft_config)
 
         word_embedding = torch.tensor(torch.load(configs.word_embedding_path)).to(device=device)
-        print("word_embedding_path: ", configs.word_embedding_path)
 
         for i, (name, param) in enumerate(self.gpt2.named_parameters()):
             if 'ln' in name or 'wpe' in name or 'lora' in name:
@@ -127,9 +91,6 @@ class Model(nn.Module):
         if self.task_name == 'long_term_forecast' or self.task_name == 'short_term_forecast':
             self.out_layer = nn.Linear(configs.d_model, configs.pred_len)
         elif self.task_name == 'classification':
-            # if configs.classify_pertp:
-            #     self.out_layer = nn.Linear(configs.enc_in, configs.num_class)
-            # else:
             self.out_layer = nn.Linear(configs.d_model * configs.enc_in * self.num_patches, configs.num_class)
         elif self.task_name == 'imputation':
             self.out_layer = nn.Linear(configs.d_model, configs.seq_len)
@@ -184,19 +145,13 @@ class Model(nn.Module):
     def classification(self, x):
         B, L, M = x.shape
 
-        # print("x shape: ", x.shape) # (256, 2500, 2)
-
         x = rearrange(x, 'b l m -> b m l')
 
         outputs_time1, outputs_text1 = self.in_layer(x)
-        print("outputs_time1 shape: ", outputs_time1.shape) # (batch * channel, num_patches, embed)
-        print("outputs_text1 shape: ", outputs_text1.shape) # (batch * channel, num_patches, embed)
 
         outputs_time, intermidiate_feat_time = self.gpt2(inputs_embeds=outputs_time1)
         outputs_text, intermidiate_feat_text = self.gpt2_text(inputs_embeds=outputs_text1)
-        print("outputs_time shape: ", outputs_time.shape) # (batch * channel, num_patches, embed)
-        print("outputs_text shape: ", outputs_text.shape) # (batch * channel, num_patches, embed)
-
+        
         outputs_time += outputs_time1
         outputs_text += outputs_text1
 
@@ -205,16 +160,6 @@ class Model(nn.Module):
         intermidiate_feat_text = tuple(
             [self.text_proj[idx](feat) for idx, feat in enumerate(list(intermidiate_feat_text))])
 
-        print("outputs_time shape: ", outputs_time.shape) # (batch * channel, num_patches, embed)
-        print("outputs_text shape: ", outputs_text.shape) # (batch * channel, num_patches, embed)
-
-        # if self.configs.classify_pertp:
-        #     outputs_time = self.projection_layer(outputs_time) # (batch, channel, seq_len)
-        #     outputs_text = self.projection_layer(outputs_text)
-
-        #     outputs_time = outputs_time.permute(0, 2, 1) # (batch, seq_len, channel)
-        #     outputs_text = outputs_text.permute(0, 2, 1)
-        # else:
         outputs_time = outputs_time.reshape(B, -1)
         outputs_text = outputs_text.reshape(B, -1)
 
@@ -224,8 +169,6 @@ class Model(nn.Module):
             outputs_time = outputs_time.repeat(1, L, 1) # (batch, seq_len, hidden)
             outputs_text = outputs_text.repeat(1, L, 1)
 
-        print("outputs_time shape: ", outputs_time.shape) # (128, 1536)
-        print("outputs_text shape: ", outputs_text.shape) # (128, 1536)
         outputs_time = self.out_layer(outputs_time)
         outputs_text = self.out_layer(outputs_text)
 

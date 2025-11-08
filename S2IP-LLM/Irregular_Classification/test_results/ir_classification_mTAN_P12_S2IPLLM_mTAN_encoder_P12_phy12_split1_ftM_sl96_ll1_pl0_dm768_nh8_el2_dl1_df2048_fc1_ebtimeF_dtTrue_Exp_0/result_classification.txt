@@ -1,5 +1,0 @@
-ir_classification_mTAN_P12_S2IPLLM_mTAN_encoder_P12_phy12_split1_ftM_sl96_ll1_pl0_dm768_nh8_el2_dl1_df2048_fc1_ebtimeF_dtTrue_Exp_0  
-Accuracy:0.8623853211009175
-AUPRC:0.5299598111837238
-AUC:0.8660970608339029
-

@@ -28,7 +28,6 @@ class Prompt(nn.Module):
         self.prompt_key = prompt_key
         self.prompt_key_init = prompt_key_init
         self.pool_size = pool_size
-        print(self.pool_size)
         self.top_k = top_k
         self.batchwise_prompt = batchwise_prompt
         self.wte = wte

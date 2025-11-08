@@ -1,5 +1,0 @@
-ir_classification_mTAN_few_shot_MIMIC_1_S2IPLLM_mTAN_encoder_S2IPLLM_mTAN_encoder_MIMIC_MIMIC_split1_ftM_sl96_ll1_pl0_dm768_nh8_el2_dl1_df2048_fc1_ebtimeF_dtTrue_Exp_0  
-Accuracy:0.894470326108973
-AUPRC:0.2135802372764813
-AUC:0.7160884603883279
-

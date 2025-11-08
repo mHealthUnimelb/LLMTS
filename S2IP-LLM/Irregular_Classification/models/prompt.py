@@ -29,7 +29,6 @@ class Prompt(nn.Module):
         self.prompt_key = prompt_key
         self.prompt_key_init = prompt_key_init
         self.pool_size = pool_size
-        print(self.pool_size)
         self.top_k = top_k
         self.batchwise_prompt = batchwise_prompt
         self.wte = wte
@@ -105,76 +104,13 @@ class Prompt(nn.Module):
             else:
                 prompt_key = self.prompt
             
-            # define 10 wrods used for drawing similarity heat map
-            # words = ["Trend", "seasonality", "cyclicity", "rise", "peak", "pattern", "shift", "position",
-            #          "irregular", "missing", "inconsistent", "discontinuous", "heart", "period", "echo",
-            #          "arm", "key", "mint"]
-            # Store the word embeddings
-            # word_embeddings = []
-            # # Load GPT-2 tokenizer and model
-            # tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
-            # gpt2_model = GPT2Model.from_pretrained("gpt2")
-            # # Access the embedding layer of GPT-2
-            # token_embeddings = gpt2_model.get_input_embeddings()
-            # # Find the token IDs for the specified words and compute the mean embedding
-            # for word in words:
-            #     token_ids = tokenizer(word)['input_ids']  # Token IDs for the word
-
-            #     # Print the tokens and their IDs
-            #     tokens = tokenizer.convert_ids_to_tokens(token_ids)
-            #     print(f"Word: {word}, Tokens: {tokens}, Token IDs: {token_ids}")
-
-            #     # Get embeddings for each token
-            #     token_embeddings_for_word = token_embeddings(torch.tensor(token_ids))
-
-            #     # Compute the mean embedding for the word if it has multiple tokens
-            #     mean_embedding = token_embeddings_for_word.mean(dim=0)
-
-            #     # Append the mean embedding to the list
-            #     word_embeddings.append(mean_embedding)
-
-
-            # sentences = [
-            #     "It shows a sustained upward trend",
-            #     "It shows a first up and then down trend",
-            #     "There are some seasonal time trends.",
-            #     "Have a good day",
-            #     "He attends a metting"
-            # ]
-            # word_embeddings = []
-            # # Load GPT-2 tokenizer and model
-            # tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
-            # gpt2_model = GPT2Model.from_pretrained("gpt2")
-            # # Access the embedding layer of GPT-2
-            # token_embeddings = gpt2_model.get_input_embeddings()
-            # for sentence in sentences:
-            #     token_ids = tokenizer(sentence)["input_ids"]
-            #     tokens = tokenizer.convert_ids_to_tokens(token_ids)
-            #     print(f"Sentence: {sentence}")
-            #     print(f"Tokens: {tokens}, Token IDs: {token_ids}")
-
-            #     token_embeddings_for_sentence = token_embeddings(torch.tensor(token_ids))
-            #     mean_embedding = token_embeddings_for_sentence.mean(dim=0)
-            #     word_embeddings.append(mean_embedding)
-
-            # # Convert the list of tensors to a single tensor
-            # prompt_key = torch.stack(word_embeddings).to(x_embed.device)
-            # print(prompt_key.shape) # (len(words), 768)
-            # print("x_embed_mean shape", x_embed_mean.shape)
-            
-
             prompt_norm = self.l2_normalize(prompt_key, dim=1) # Pool_size, C   self.prompt_key
             x_embed_norm = self.l2_normalize(x_embed_mean, dim=1) # B, C
-            print("prompt_norm shape", prompt_norm.shape)
-            print("x_embed_norm shape", x_embed_norm.shape)
 
             similarity = torch.matmul(x_embed_norm, prompt_norm.t()) # B, Pool_size
-            print("similarity shape", similarity.shape)
             
             if prompt_mask is None:
                 top_vals, idx = torch.topk(similarity, k=self.top_k, dim=1) # B, top_k
-                print(f"Top-{self.top_k} similarity values per sample: {top_vals}\n")
-                print(f"Top-{self.top_k} similarity indices per sample: {idx}\n")
                 if self.batchwise_prompt:
                     prompt_id, id_counts = torch.unique(idx, return_counts=True, sorted=True)
                     # In jnp.unique, when the 'size' is specified and there are fewer than the indicated number of elements,

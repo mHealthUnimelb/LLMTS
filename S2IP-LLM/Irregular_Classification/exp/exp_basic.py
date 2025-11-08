@@ -1,6 +1,6 @@
 import os
 import torch
-from models import  S2IPLLM, S2IPLLM_TimeLLM_encoder, S2IPLLM_CALF_encoder, S2IPLLM_mTAN_encoder
+from models import  S2IPLLM, S2IPLLM_mTAN_encoder
 from torch.nn.parallel import DistributedDataParallel as DDP
 
 
@@ -10,8 +10,6 @@ class Exp_Basic(object):
         self.model_dict = {
            
             'S2IPLLM': S2IPLLM,
-            'S2IPLLM_TimeLLM_encoder': S2IPLLM_TimeLLM_encoder,
-            'S2IPLLM_CALF_encoder': S2IPLLM_CALF_encoder,
             'S2IPLLM_mTAN_encoder': S2IPLLM_mTAN_encoder,    
         }
         self.device = self._acquire_device()

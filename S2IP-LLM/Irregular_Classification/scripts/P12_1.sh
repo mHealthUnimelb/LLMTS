@@ -1,12 +1,12 @@
 CUDA_VISIBLE_DEVICES=0 python -u run.py \
   --task_name ir_classification \
   --is_training 1 \
-  --root_path ./dataP12 \
+  --root_path ../../datasets/P12data \
   --data_path P12 \
   --model_id P12 \
   --model S2IPLLM \
   --data P12 \
-  --data_split_path ./data/P12data/splits/phy12_split1.npy \
+  --data_split_path ../../datasets/P12data/splits/phy12_split1.npy \
   --number_variable 41 \
   --features M \
   --seq_len 2881 \

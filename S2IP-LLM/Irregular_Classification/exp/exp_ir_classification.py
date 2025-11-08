@@ -4,7 +4,7 @@ from utils.tools import EarlyStopping, adjust_learning_rate, visual, adjust_mode
 from utils.metrics import metric
 import torch
 import torch.nn as nn
-from models import S2IPLLM, S2IPLLM_TimeLLM_encoder, S2IPLLM_CALF_encoder
+from models import S2IPLLM
 from torch.nn.utils import clip_grad_norm_
 from utils.losses import mape_loss, mase_loss, smape_loss
 
@@ -33,8 +33,6 @@ class Exp_ir_Classification(object):
         self.args = args
         self.model_dict = {
             'S2IPLLM': S2IPLLM,
-            'S2IPLLM_TimeLLM_encoder': S2IPLLM_TimeLLM_encoder,
-            'S2IPLLM_CALF_encoder': S2IPLLM_CALF_encoder,
         }
 
         self.device = torch.device('cuda:0')
@@ -49,10 +47,6 @@ class Exp_ir_Classification(object):
         self.test_loader = self.all_data.data_objects["test_dataloader"]
         self.args.num_class = len(self.all_data.class_names)
         self.dim = self.all_data.data_objects["input_dim"]
-        # self.train_data, self.train_loader = self._get_data(flag='train')
-        # self.vali_data, self.vali_loader = self._get_data(flag='val')
-        # self.test_data, self.test_loader = self._get_data(flag='test')
-        # self.dim = self.train_data.data_objects["input_dim"]
 
         self.optimizer = self._select_optimizer()
         self.train_criterion = self._select_criterion()
@@ -100,68 +94,6 @@ class Exp_ir_Classification(object):
         n_values = np.max(y_) + 1
         return np.eye(n_values)[np.array(y_, dtype=np.int32)]
 
-    # def assert_finite(self, t, name):
-    #     """
-    #     Raise an error if `t` contains NaN or ±Inf.
-    #     Also report how many of each kind were found.
-
-    #     Parameters
-    #     ----------
-    #     t : torch.Tensor
-    #         Tensor to check.
-    #     name : str, optional
-    #         A human-readable identifier for error messages.
-    #     """
-    #     # Booleans marking where the special values are
-    #     isnan = torch.isnan(t)
-    #     isposinf = torch.isposinf(t)
-    #     isneginf = torch.isneginf(t)
-
-    #     # Counts (convert to python ints for nice printing)
-    #     n_nan = int(isnan.sum())
-    #     n_posinf = int(isposinf.sum())
-    #     n_neginf = int(isneginf.sum())
-    #     n_total_inf = n_posinf + n_neginf
-
-    #     if n_nan or n_total_inf:
-    #         msg = (
-    #             f"{name} contains non-finite values → "
-    #             f"NaN: {n_nan}, +Inf: {n_posinf}, -Inf: {n_neginf}"
-    #         )
-    #         raise RuntimeError(msg)
-        
-    # def save_tensor(self, t, file_path, as_numpy):
-    #     """
-    #     Save a tensor to disk (PyTorch .pt or NumPy .npy).
-
-    #     Parameters
-    #     ----------
-    #     t : torch.Tensor
-    #         The tensor to save.
-    #     file_path : str | Path
-    #         Target file name *with* or *without* extension.
-    #         If no extension is given: `.pt` for PyTorch, `.npy` for NumPy.
-    #     as_numpy : bool, default False
-    #         If True → save as NumPy `.npy`; otherwise save with `torch.save(...)`.
-
-    #     Returns
-    #     -------
-    #     Path
-    #         The full path where the file was written.
-    #     """
-    #     file_path = Path(file_path)
-    #     if file_path.suffix == '':
-    #         file_path = file_path.with_suffix('.npy' if as_numpy else '.pt')
-
-    #     file_path.parent.mkdir(parents=True, exist_ok=True)
-
-    #     if as_numpy:
-    #         import numpy as np
-    #         np.save(file_path, t.detach().cpu().numpy())
-    #     else:
-    #         torch.save(t.detach().cpu(), file_path)
-
-    #     return file_path
 
     def train(self, setting):
         path = os.path.join(self.args.checkpoints, setting)
@@ -211,11 +143,8 @@ class Exp_ir_Classification(object):
                     f_dim = -1 if self.args.features == 'MS' else 0
 
                 if self.args.classify_pertp:
-                    # self.assert_finite(outputs, "outputs")
                     outputs = outputs.reshape(-1, self.args.num_class)
                     batch_y = batch_y.argmax(-1).reshape(-1)
-                
-                # self.assert_finite(outputs, "outputs")
 
                 loss = self.train_criterion(outputs, batch_y.long())
 
@@ -247,20 +176,13 @@ class Exp_ir_Classification(object):
             train_loss = np.average(train_loss)
             self.train_losses.append(train_loss)
             sim_loss = np.average(simlarity_losses)
-            # vali_loss = self.vali(self.vali_data, self.vali_loader, self.criterion)
 
             train_preds = torch.cat(train_preds, 0)
             train_trues = torch.cat(train_trues, 0)
 
-            # path = self.save_tensor(train_preds, f"debug/bad_logits", as_numpy=True)
-            # print(f"Saved offending logits to ➜ {path}")
-
             train_probs = torch.nn.functional.softmax(train_preds)
-            # self.assert_finite(train_probs, "train_probs")
             train_predictions = torch.argmax(train_probs, dim=1)
             train_trues = train_trues.flatten()
-            # calculate AUPRC
-            # train_auprc = self._select_metric(train_probs, train_trues)
             # calculate accuracy
             correct = (train_predictions == train_trues).float()
             train_trues = train_trues.detach().cpu().numpy()
@@ -315,21 +237,12 @@ class Exp_ir_Classification(object):
                             test_auprc, test_auc, test_precision, test_recall, test_F1))
 
             if self.args.data == 'P12' or self.args.data == 'P19' or self.args.data == 'eICU' or self.args.data == 'MIMIC':
-                # prev_best = early_stopping.best_score
                 early_stopping(-vali_auprc, self.model, path)
             elif self.args.data == 'PAM' or self.args.data == 'activity':
                 early_stopping(-vali_accuracy, self.model, path)
             if early_stopping.early_stop:
                 print("Early stopping")
                 break
-
-            # if early_stopping.best_score != prev_best:
-            #     best_ckpt = os.path.join('./checkpoints/' + setting, 'checkpoint.pth')
-            #     self.model.load_state_dict(torch.load(best_ckpt))
-            #     test_loss, test_accuracy, test_auprc, test_auc = self.vali(self.test_loader,
-            #                                                                self.test_criterion)
-            #     print("New best valid -> test set results at epoch {}: acc {:.4f}, auprc {:.4f}, auc {:.4f}"
-            #           .format(epoch + 1, test_accuracy, test_auprc, test_auc))
 
             adjust_learning_rate(self.optimizer, epoch + 1, self.args)
             adjust_model(self.model, epoch + 1, self.args)
@@ -412,47 +325,6 @@ class Exp_ir_Classification(object):
         preds = []
         trues = []
 
-        sim_bank = []
-        # define 10 wrods used for drawing similarity heat map
-        words = ["Trend", "seasonality", "cyclicity", "rise", "peak", "pattern", "shift", "position",
-                    "irregular", "missing", "inconsistent", "discontinuous", "heart", "period", "echo",
-                    "arm", "key", "mint"]
-        # Store the word embeddings
-        word_embeddings = []
-        # Load GPT-2 tokenizer and model
-        tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
-        gpt2_model = GPT2Model.from_pretrained("gpt2")
-        # Access the embedding layer of GPT-2
-        token_embeddings = gpt2_model.get_input_embeddings()
-        # Find the token IDs for the specified words and compute the mean embedding
-        for word in words:
-            token_ids = tokenizer(word, add_special_tokens=False)['input_ids']  # Token IDs for the word
-
-            # Print the tokens and their IDs
-            tokens = tokenizer.convert_ids_to_tokens(token_ids)
-            print(f"Word: {word}, Tokens: {tokens}, Token IDs: {token_ids}")
-
-            # Get embeddings for each token
-            token_embeddings_for_word = token_embeddings(torch.tensor(token_ids))
-
-            # Compute the mean embedding for the word if it has multiple tokens
-            mean_embedding = token_embeddings_for_word.mean(dim=0)
-            # mean_embedding = token_embeddings_for_word.max(dim=0).values
-            # mean_embedding = token_embeddings_for_word[0]
-
-            # Append the mean embedding to the list
-            word_embeddings.append(mean_embedding)
-        # Convert the list of tensors to a single tensor
-        word_embeddings = torch.stack(word_embeddings).to(device='cuda')
-        print(word_embeddings.shape) # (len(words), 768)
-        word_embeddings_norm = nn.functional.normalize(word_embeddings, dim=-1)
-
-
-        # sim_matrix = []
-        # input_embedding = []
-        # prompted_embedding = []
-        # last_embedding = []
-
         self.model.eval()
         with torch.no_grad():
             for i, (batch_x, batch_y) in tqdm(enumerate(self.test_loader)):
@@ -474,16 +346,6 @@ class Exp_ir_Classification(object):
                     else:
                         outputs, res = self.model(batch_x)
 
-                print("prompted_embedding shape", res["prompted_embedding"].shape)
-                batched_prompt = res["prompted_embedding"][:, :res["total_prompt_len"]]
-                print("batched_prompt shape", batched_prompt.shape) # [615, 4, 768]
-                prompt_emb = batched_prompt[0]
-                # similarity between prompt_emb and predefined words
-                prompt_emb_norm = nn.functional.normalize(prompt_emb, dim=-1)
-                sim = word_embeddings_norm @ prompt_emb_norm.T # (words_len, prompt_len)
-                sim_bank.append(sim)
-                print("sim", sim)
-
                 f_dim = -1 if self.args.features == 'MS' else 0
 
                 if self.args.classify_pertp:
@@ -495,11 +357,6 @@ class Exp_ir_Classification(object):
 
                 preds.append(pred)
                 trues.append(true)
-                # if i % 20 == 0:
-                #     input = batch_x.float().detach().cpu().numpy()
-                #     gt = np.concatenate((input[0, :, -1], true[0, :, -1]), axis=0)
-                #     pd = np.concatenate((input[0, :, -1], pred[0, :, -1]), axis=0)
-                #     visual(gt, pd, os.path.join(folder_path, str(i) + '.pdf'))
 
         preds = torch.cat(preds, 0)
         trues = torch.cat(trues, 0)
@@ -507,7 +364,6 @@ class Exp_ir_Classification(object):
         probs = torch.nn.functional.softmax(preds)  # (total_samples, num_classes) est. prob. for each class and sample
         predictions = torch.argmax(probs, dim=1).cpu().numpy()  # (total_samples,) int class index for each sample
         trues = trues.flatten()
-        # auprc = self._select_metric(probs, trues)
         trues = trues.cpu().numpy()
         accuracy = np.mean(predictions == trues)
 
@@ -524,10 +380,6 @@ class Exp_ir_Classification(object):
                                   average='macro', )
             F1 = 2 * (precision * recall) / (precision + recall)
 
-
-        # print('Accuracy:{}'.format(accuracy))
-        # print('AUPRC:{}'.format(auprc))
-        # print('AUC:{}'.format(auc))
         # result save
         folder_path = './test_results/' + setting + '/'
         if not os.path.exists(folder_path):
@@ -561,84 +413,8 @@ class Exp_ir_Classification(object):
             f.write('\n')
             f.close()
 
-        # save similarity
-        if sim_bank:
-            sim_matrix = torch.cat(sim_bank, 0)
-            np.save(folder_path + 'sim_matrix.npy', sim_matrix.cpu().numpy())
-
-        # np.save(folder_path + 'metrics.npy', np.array([mae, mse, rmse, mape, mspe]))
-        # np.save(folder_path + 'pred.npy', preds)
-        # np.save(folder_path + 'true.npy', trues)
         if self.args.data == 'P12' or self.args.data == 'P19' or self.args.data == 'eICU' or self.args.data == 'MIMIC':
             return accuracy, auprc, auc
         elif self.args.data == 'PAM' or self.args.data == 'activity':
             return accuracy, auprc, auc, precision, recall, F1
-
-    # def test(self, setting, test=0):
-    #     test_data, test_loader = self._get_data(flag='test')
-    #     if test:
-    #         print('loading model')
-    #         self.model.load_state_dict(torch.load(os.path.join('./checkpoints/' + setting, 'checkpoint.pth')))
-    #
-    #     preds = []
-    #     trues = []
-    #
-    #     self.model.eval()
-    #     with torch.no_grad():
-    #         for i, (batch_x, batch_y) in tqdm(enumerate(test_loader)):
-    #             batch_x = batch_x[:, :, :self.dim]
-    #             batch_x = batch_x.float().to(self.device)
-    #             batch_y = batch_y.float().long().to(self.device)
-    #
-    #             if self.args.use_amp:
-    #                 with torch.cuda.amp.autocast():
-    #                     if self.args.output_attention:
-    #                         outputs = self.model(batch_x)[0]
-    #                     else:
-    #                         outputs = self.model(batch_x)
-    #             else:
-    #                 if self.args.output_attention:
-    #                     outputs = self.model(batch_x)[0]
-    #                 else:
-    #                     outputs, res = self.model(batch_x)
-    #             f_dim = -1 if self.args.features == 'MS' else 0
-    #
-    #             pred = outputs
-    #             true = batch_y
-    #
-    #             preds.append(outputs)
-    #             trues.append(true)
-    #
-    #     preds = torch.cat(preds, 0)
-    #     trues = torch.cat(trues, 0)
-    #
-    #     probs = torch.nn.functional.softmax(preds)  # (total_samples, num_classes) est. prob. for each class and sample
-    #     predictions = torch.argmax(probs, dim=1).cpu().numpy()  # (total_samples,) int class index for each sample
-    #     trues = trues.flatten()
-    #     trues = trues.cpu().numpy()
-    #     accuracy = np.mean(predictions == trues)
-    #     auc = roc_auc_score(trues, probs.cpu().numpy()[:, 1]) if not self.args.classify_pertp else 0.
-    #     auprc = average_precision_score(trues, probs.cpu().numpy()[:, 1]) if not self.args.classify_pertp else 0.
-    #
-    #     print('Accuracy:{}'.format(accuracy))
-    #     print('AUPRC:{}'.format(auprc))
-    #     print('AUC:{}'.format(auc))
-    #     # result save
-    #     folder_path = './test_results/' + setting + '/'
-    #     if not os.path.exists(folder_path):
-    #         os.makedirs(folder_path)
-    #     f = open(os.path.join(folder_path, "result_classification.txt"), 'a')
-    #     f.write(setting + "  \n")
-    #     f.write('Accuracy:{}'.format(accuracy))
-    #     f.write('\n')
-    #     f.write('AUPRC:{}'.format(auprc))
-    #     f.write('\n')
-    #     f.write('AUC:{}'.format(auc))
-    #     f.write('\n')
-    #     f.write('\n')
-    #     f.close()
-    #
-    #     # Saving true labels and predictions
-    #     # np.savetxt(os.path.join(folder_path, 'test_trues.txt'), trues, fmt='%d')
-    #     # np.savetxt(os.path.join(folder_path, 'test_predictions.txt'), predictions, fmt='%d')
-    #     return
+        

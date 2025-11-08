@@ -1,0 +1,128 @@
+seq_len=2880
+model=CALF_mTAN_encoder
+pred_len=0
+
+python run_mTAN_encoder.py \
+    --seed 12 \
+    --root_path ../datasets/MIMIC/ \
+    --is_training 1 \
+    --task_name classification_mTAN_encoder \
+    --model_id MIMIC_$model'_'$seq_len'_'$pred_len \
+    --data MIMIC \
+    --data_type irregular \
+    --seq_len $seq_len \
+    --label_len 0 \
+    --pred_len $pred_len \
+    --batch_size 16 \
+    --learning_rate 0.00005 \
+    --lradj type1 \
+    --train_epochs 100 \
+    --d_model 768 \
+    --n_heads 4 \
+    --d_ff 768 \
+    --dropout 0.3 \
+    --enc_in 96 \
+    --c_out 96 \
+    --gpt_layer 6 \
+    --itr 1 \
+    --model $model \
+    --r 32 \
+    --lora_alpha 64 \
+    --lora_dropout 0.1 \
+    --patience 10 \
+    --task_loss ce \
+    --word_embedding_path wte_pca_600.pt \
+    --task_w 1.0 \
+    --feature_w 0.01 \
+    --output_w 1.0 \
+    --classif \
+    --num_ref_points 256 \
+    --num_encoder_heads 1 \
+    --num_ca_heads 1 \
+    --learn_emb \
+    --patch_len 68 \
+    --stride 32 \
+
+
+# python run_mTAN_encoder.py \
+#     --seed 123 \
+#     --root_path ../datasets/MIMIC/ \
+#     --is_training 1 \
+#     --task_name classification_mTAN_encoder \
+#     --model_id MIMIC_$model'_'$seq_len'_'$pred_len \
+#     --data MIMIC \
+#     --data_type irregular \
+#     --seq_len $seq_len \
+#     --label_len 0 \
+#     --pred_len $pred_len \
+#     --batch_size 16 \
+#     --learning_rate 0.00005 \
+#     --lradj type1 \
+#     --train_epochs 100 \
+#     --d_model 768 \
+#     --n_heads 4 \
+#     --d_ff 768 \
+#     --dropout 0.3 \
+#     --enc_in 96 \
+#     --c_out 96 \
+#     --gpt_layer 6 \
+#     --itr 1 \
+#     --model $model \
+#     --r 32 \
+#     --lora_alpha 64 \
+#     --lora_dropout 0.1 \
+#     --patience 10 \
+#     --task_loss ce \
+#     --word_embedding_path wte_pca_600.pt \
+#     --task_w 1.0 \
+#     --feature_w 0.01 \
+#     --output_w 1.0 \
+#     --classif \
+#     --num_ref_points 256 \
+#     --num_encoder_heads 1 \
+#     --num_ca_heads 1 \
+#     --learn_emb \
+#     --patch_len 68 \
+#     --stride 32 \
+
+
+# python run_mTAN_encoder.py \
+#     --seed 42 \
+#     --root_path ../datasets/MIMIC/ \
+#     --is_training 1 \
+#     --task_name classification_mTAN_encoder \
+#     --model_id MIMIC_$model'_'$seq_len'_'$pred_len \
+#     --data MIMIC \
+#     --data_type irregular \
+#     --seq_len $seq_len \
+#     --label_len 0 \
+#     --pred_len $pred_len \
+#     --batch_size 16 \
+#     --learning_rate 0.00005 \
+#     --lradj type1 \
+#     --train_epochs 100 \
+#     --d_model 768 \
+#     --n_heads 4 \
+#     --d_ff 768 \
+#     --dropout 0.3 \
+#     --enc_in 96 \
+#     --c_out 96 \
+#     --gpt_layer 6 \
+#     --itr 1 \
+#     --model $model \
+#     --r 32 \
+#     --lora_alpha 64 \
+#     --lora_dropout 0.1 \
+#     --patience 10 \
+#     --task_loss ce \
+#     --word_embedding_path wte_pca_600.pt \
+#     --task_w 1.0 \
+#     --feature_w 0.01 \
+#     --output_w 1.0 \
+#     --classif \
+#     --num_ref_points 256 \
+#     --num_encoder_heads 1 \
+#     --num_ca_heads 1 \
+#     --learn_emb \
+#     --patch_len 68 \
+#     --stride 32 \

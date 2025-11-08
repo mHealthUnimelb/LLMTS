@@ -46,7 +46,6 @@ class GNNLLM_fsca(nn.Module):
         gpt2_config = GPT2Config.from_pretrained('gpt2')
         self.gpt2 = GPT2withGNN.from_pretrained('gpt2', config=gpt2_config, args=configs)
         self.gpt2.h = self.gpt2.h[:configs.gpt_layers]
-        print("gpt_layers:", configs.gpt_layers)
         
         for i, (name, param) in enumerate(self.gpt2.named_parameters()):
             if 'ln' in name or 'wpe' in name:
@@ -205,7 +204,6 @@ class GNNLLM_fsca(nn.Module):
         input_x = self.padding_patch_layer(input_x)
         input_x = input_x.unfold(dimension=-1, size=self.patch_size, step=self.stride)
         input_x = rearrange(input_x, 'b m n p -> b n (p m)')
-        print("input x shape", input_x.shape) # (batch, num_patches, patch_len * embed)
 
         enc_out = self.enc_embedding(input_x, None)
 

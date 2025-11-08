@@ -49,7 +49,6 @@ class GNNLLM_fsca(nn.Module):
         gpt2_config = GPT2Config.from_pretrained('gpt2')
         self.gpt2 = GPT2withGNN.from_pretrained('gpt2', config=gpt2_config, args=configs)
         self.gpt2.h = self.gpt2.h[:configs.gpt_layers]
-        print("gpt_layers:", configs.gpt_layers)
         
         for i, (name, param) in enumerate(self.gpt2.named_parameters()):
             if 'ln' in name or 'wpe' in name:
@@ -181,17 +180,13 @@ class GNNLLM_fsca(nn.Module):
     def forward(self, x_enc, time_steps, x_mark_enc):
         # treat each channel as separate sequence
         batch, L, M = x_enc.shape
-        print("x shape", x_enc.shape)
-        print("time steps shape", time_steps.shape)
 
         n_vars = M // 2
         values = x_enc[:, :, :n_vars]
         masks = x_enc[:, :, n_vars:2*n_vars]
         time_steps = time_steps.unsqueeze(1).expand(-1, n_vars, -1).reshape(batch * n_vars, L)
-        print("time steps shape", time_steps.shape)
 
         x_enc = torch.stack((values, masks), dim=-1) # (B, T, n_vars, 2)
-        print("x shape", x_enc.shape)
 
         x_enc = x_enc.permute(0, 2, 1, 3).reshape(batch * n_vars, L, 2)
 
@@ -219,15 +214,8 @@ class GNNLLM_fsca(nn.Module):
         # self.edge_expand_num = B * M
         self.task_prompt_embeddings_expand = self.task_prompt_embeddings.float().expand(self.edge_expand_num, -1, -1)
         self.fix_prompt_embeddings_expand = self.fix_prompt_embeddings.float().expand(self.edge_expand_num, -1, -1)
-        
-        print("x_enc shape", x_enc.shape) # (batch, seq_len, feature)
-        # input_x = rearrange(x_enc, 'b l m -> b m l')
-        # input_x = self.padding_patch_layer(input_x)
-        # input_x = input_x.unfold(dimension=-1, size=self.patch_size, step=self.stride)
-        # input_x = rearrange(input_x, 'b m n p -> b n (p m)')
 
         enc_out = self.enc_embedding(x_enc, time_steps, None)
-        print("enc_out shape", enc_out.shape) # (batch, num_patches, embed)
 
         ######### splicing example prompts #########
         outputs = []
@@ -270,16 +258,9 @@ class GNNLLM_fsca(nn.Module):
             ).last_hidden_state
 
         ######### output layer
-        print("outputs shape", outputs.shape) # (batch*feature, patch_num + prompt_length, embed)
         outputs = outputs[:, :, :self.d_ff]
-        print("outputs shape", outputs.shape) # (batch*feature, patch_num + prompt_length, d_ff)
-
         outputs = self.act(outputs).reshape(batch, -1)
-        print("outputs shape", outputs.shape)
-
         outputs = self.ln_proj(outputs)
-        print("outputs shape", outputs.shape)
-
         outputs = self.out_layer(outputs)
         
         return outputs

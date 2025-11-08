@@ -66,11 +66,6 @@ def set_seed(seed: int):
     # 4) PyTorch CUDA RNG (if using GPUs)
     torch.cuda.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)  # if you use >1 GPU
-#
-#     # 5) Ensure that cuDNN uses deterministic algorithms
-#     torch.backends.cudnn.deterministic = True
-#     # 6) Disable the cuDNN benchmark mode (can introduce randomness)
-#     torch.backends.cudnn.benchmark = False
 
 if __name__ == '__main__':
     """"0 means no missing (full observations); 1.0 means no observation, all missed"""
@@ -91,9 +86,8 @@ if __name__ == '__main__':
         reverse_ = args.reverse  # False, True
         feature_removal_level = args.feature_removal_level  # 'sample', 'set'
         if args.dataset == 'P12':
-            all_split_path = ['./data/P12data/splits/phy12_split1.npy', './data/P12data/splits/phy12_split2.npy',
-                              './data/P12data/splits/phy12_split3.npy', './data/P12data/splits/phy12_split4.npy',
-                              './data/P12data/splits/phy12_split5.npy']
+            all_split_path = ['../datasets/P12data/splits/phy12_split1.npy', '../datasets/P12data/splits/phy12_split2.npy',
+                              '../datasets/P12data/splits/phy12_split3.npy']
         elif args.dataset == 'P19':
             all_split_path = ['./data/P19data/splits/phy19_split1_new.npy',
                               './data/P19data/splits/phy19_split2_new.npy',
@@ -106,7 +100,7 @@ if __name__ == '__main__':
         else:
             all_split_path = None
 
-        num_runs = 5
+        num_runs = 3
         for r in range(num_runs):
             experiment_id = int(SystemRandom().random() * 100000)
             if r == 0:

@@ -8,8 +8,8 @@ model = GPT2Model.from_pretrained('gpt2', output_attentions=True, output_hidden_
 
 wte = model.wte.state_dict()['weight'].cpu().numpy()
 
-pca = PCA(n_components=768)
+pca = PCA(n_components=600)
 
 wte_pca = pca.fit_transform(wte.T)
 
-torch.save(wte_pca, "wte_pca_768.pt")
+torch.save(wte_pca, "wte_pca_600.pt")

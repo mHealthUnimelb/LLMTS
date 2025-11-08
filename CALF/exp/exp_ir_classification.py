@@ -23,19 +23,6 @@ import copy
 warnings.filterwarnings('ignore')
 
 
-class Hook:
-    def __init__(self):
-        self.output = None
-        self.attention_weights = None
-
-    def hook_fn(self, module, input, output):
-        # This function will be called when the layer produces an output
-        self.output = output
-
-    def attention_hook_fn(self, module, input, output):
-        self.attention_weights = output[1]
-
-
 class Exp_IR_Classification(Exp_Basic):
     def __init__(self, args):
         super(Exp_IR_Classification, self).__init__(args)
@@ -48,14 +35,6 @@ class Exp_IR_Classification(Exp_Basic):
         self.train_auprcs = []
         self.vali_auprcs = []
         self.test_auprcs = []
-        self.hook = Hook()
-        # self.handle = self.model.in_layer.register_forward_hook(self.hook.hook_fn)
-        # self.cross_attention_handle = self.model.in_layer.cross_attention.register_forward_hook(
-        #     self.hook.attention_hook_fn)
-        # self.all_data, _ = self._get_data(flag=None)
-        # self.train_loader = self.all_data.data_objects["train_dataloader"]
-        # self.vali_loader = self.all_data.data_objects["val_dataloader"]
-        # self.test_loader = self.all_data.data_objects["test_dataloader"]
 
     def _build_model(self):
         # model input depends on data
@@ -66,18 +45,11 @@ class Exp_IR_Classification(Exp_Basic):
         self.train_loader = self.all_data.data_objects["train_dataloader"]
         self.vali_loader = self.all_data.data_objects["val_dataloader"]
         self.test_loader = self.all_data.data_objects["test_dataloader"]
-        # train_data, train_loader = self._get_data(flag='train')
-        # vali_data, vali_loader = self._get_data(flag='val')
-        # test_data, test_loader = self._get_data(flag='test')
-        # self.args.seq_len = max(train_data.max_seq_len, test_data.max_seq_len)
-        # self.args.time_steps = train_data.time_steps
-        # self.args.pred_len = 0
-        # self.args.enc_in = train_data.feature_dim
         self.args.num_class = len(self.all_data.class_names)
         self.args.dim = self.all_data.data_objects["input_dim"]
         # model init
         model = self.model_dict[self.args.model].Model(self.args, self.device).float()
-        print("model", model)
+
         if self.args.use_multi_gpu and self.args.use_gpu:
             model = nn.DataParallel(model, device_ids=self.args.device_ids)
         return model
@@ -98,27 +70,11 @@ class Exp_IR_Classification(Exp_Basic):
         return model_optim, loss_optim
 
     def _calculate_class_weights(self, y_true, num_classes):
-        # print(f"y_true label: {np.unique(y_true)}, type: {type(y_true)}")
-        # print(f"num_classes label: {np.arange(num_classes)}, type: {type(np.arange(num_classes))}")
-        # y_true_copy = copy.deepcopy(y_true)
-        # y_true_copy = np.array(y_true_copy)
         y_true_copy = np.array(y_true)
-        print(f"y_true_copy label: {np.unique(y_true_copy)}, type: {type(y_true_copy)}")
         class_weights = compute_class_weight(class_weight='balanced', classes=np.unique(y_true_copy), y=y_true_copy)
         return torch.tensor(class_weights, dtype=torch.float).to(self.device)
 
     def _select_criterion(self):
-        # # extract labels from the training data to compute class weights
-        # train_data, _ = self._get_data(flag='train')
-        # y_train = train_data.y_data
-        # y_train = [label for (_, _, _, _, label) in self.train_data]
-        # #
-        # # # compute class weights
-        # class_weights = self._calculate_class_weights(y_train, self.args.num_class)
-        # # class_weights = self._calculate_class_weights(y_train, self.args.num_class)
-        # # class_weights = self.train_class_weights
-        # print("class_weights", class_weights)
-
         criterion = cmLoss(self.args.feature_loss,
                            self.args.output_loss,
                            self.args.task_loss,
@@ -131,10 +87,6 @@ class Exp_IR_Classification(Exp_Basic):
     def _select_vali_criterion(self):
         return nn.CrossEntropyLoss()
 
-    # def _select_metric(self, probs, target):
-    #     metric = MulticlassAveragePrecision(num_classes=self.args.num_class, average="macro")
-    #     return metric(probs, target)
-
     def _one_hot(self, y_):
         # Function to encode output labels from number indexes
         # e.g.: [[5], [0], [3]] --> [[0, 0, 0, 0, 0, 1], [1, 0, 0, 0, 0, 0], [0, 0, 0, 1, 0, 0]]
@@ -144,31 +96,7 @@ class Exp_IR_Classification(Exp_Basic):
         n_values = np.max(y_) + 1
         return np.eye(n_values)[np.array(y_, dtype=np.int32)]
 
-    def _select_metric(self, probs, target):
-        probs = probs.detach().cpu().numpy()
-        target = target.detach().cpu().numpy()
-
-        # Initialize list to store AUPRC for each class
-        auprcs = []
-
-        # Compute AUPRC for each class
-        for i in range(self.args.num_class):
-            # For class `i`, the true labels are `1` if the actual label is `i`, else `0`
-            precision, recall, _ = precision_recall_curve(target == i, probs[:, i])
-            auprc = auc(recall, precision)
-            auprcs.append(auprc)
-
-        # Return the average AUPRC across all classes
-        return np.mean(auprcs)
-
     def train(self, setting):
-        # train_data, train_loader = self._get_data(flag='train')
-        # vali_data, vali_loader = self._get_data(flag='val')
-        # test_data, test_loader = self._get_data(flag='test')
-        # all_data = self._get_data(flag=None)
-        # train_loader = all_data.data_objects["train_dataloader"]
-        # vali_loader = all_data.data_objects["val_dataloader"]
-        # test_loader = all_data.data_objects["test_dataloader"]
         dim = self.all_data.data_objects["input_dim"]
 
         path = os.path.join(self.args.checkpoints, setting)
@@ -183,10 +111,6 @@ class Exp_IR_Classification(Exp_Basic):
         model_optim, loss_optim = self._select_optimizer()
         criterion = self._select_criterion()
 
-        # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(model_optim, T_max=self.args.tmax, eta_min=1e-8)
-
-        # monitored_layer_name = "gpt2.h.0.attn.c_attn.weight"
-
         for epoch in range(self.args.train_epochs):
             iter_count = 0
             train_loss = []
@@ -196,16 +120,7 @@ class Exp_IR_Classification(Exp_Basic):
             self.model.train()
             epoch_time = time.time()
 
-            # Store initial weights before applying LoRA
-            initial_weights = {name: param.clone() for name, param in self.model.named_parameters() if
-                               param.requires_grad}
-
             for i, (batch_x, label) in enumerate(self.train_loader):
-                num_zeros = (label == 0).sum().item()
-                num_ones = (label == 1).sum().item()
-
-                print(f"Batch {i}: # of labels == 0: {num_zeros}, # of labels == 1: {num_ones}")
-
                 iter_count += 1
                 model_optim.zero_grad()
                 loss_optim.zero_grad()
@@ -216,28 +131,17 @@ class Exp_IR_Classification(Exp_Basic):
                 observed_data, observed_mask, observed_tp = batch_x[:, :, :dim], batch_x[:, :, dim:2 * dim], batch_x[:,
                                                                                                              :, -1]
 
-                print("batch_x shape: ", batch_x.shape)  # 128, 190, 83
-                print("label shape: ", label.shape)  # 128
-
-                # print("input shape: ", torch.cat((observed_data, observed_mask), 2).shape)  # (128, 190, 82)
                 outputs = self.model(observed_data)
 
-                # print(
-                #     f"Label min: {label.min()}, Label max: {label.max()}, Label dtype: {label.dtype}, Label shape: {label.shape}")
-                # print(f"outputs.shape: {outputs['outputs_time'].shape}, outputs.dtype: {outputs['outputs_time'].dtype}")
-                # print(f"label.shape: {label.shape}, label.dtype: {label.dtype}")
-                # print(f"label unique values: {torch.unique(label)}")
                 if self.args.classify_pertp:
                     outputs["outputs_time"] = outputs["outputs_time"].reshape(-1, self.args.num_class)
                     outputs["outputs_text"] = outputs["outputs_text"].reshape(-1, self.args.num_class)
                     label = label.argmax(-1).reshape(-1)
                     loss = criterion(outputs, label.long())
                 else:
-                    # outputs = outputs["outputs_time"]
                     loss = criterion(outputs, label.long().squeeze(-1))
                 
                 loss.backward()
-                # nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=4.0)
                 model_optim.step()
                 loss_optim.step()
 
@@ -254,19 +158,7 @@ class Exp_IR_Classification(Exp_Basic):
                     iter_count = 0
                     time_now = time.time()
 
-                # monitored_layer = dict(self.model.named_parameters())[monitored_layer_name]
-
-            # Compare weights after applying LoRA
-            for name, param in self.model.named_parameters():
-                if name in initial_weights:
-                    if not torch.equal(param, initial_weights[name]):
-                        print(f"Weights changed in layer: {name}")
-                    else:
-                        print(f"No change in layer: {name}")
-
             print("Epoch: {} cost time: {}".format(epoch + 1, time.time() - epoch_time))
-
-            # print(f"Epoch {epoch + 1}, After update: {monitored_layer.data}")
 
             train_loss = np.average(train_loss)
             self.train_losses.append(train_loss)
@@ -276,8 +168,6 @@ class Exp_IR_Classification(Exp_Basic):
             train_probs = torch.nn.functional.softmax(train_preds)
             train_predictions = torch.argmax(train_probs, dim=1)
             train_trues = train_trues.flatten()
-            # calculate AUPRC
-            # train_auprc = self._select_metric(train_probs, train_trues)
             # calculate accuracy
             correct = (train_predictions == train_trues).float()
             train_trues = train_trues.detach().cpu().numpy()
@@ -333,18 +223,10 @@ class Exp_IR_Classification(Exp_Basic):
                             vali_loss, vali_accuracy, vali_auprc, vali_auc, vali_precision, vali_recall, vali_F1, test_loss, test_accuracy,
                             test_auprc, test_auc, test_precision, test_recall, test_F1))
 
-            # if self.args.cos:
-            #     scheduler.step()
-            #     print("lr = {}".format(model_optim.param_groups[0]['lr']))
-            # else:
-            #     adjust_learning_rate(model_optim, epoch + 1, self.args)
-
-            # early_stopping(-vali_accuracy, self.model, path)
             if self.args.data == 'P12' or self.args.data == 'P19' or self.args.data == 'eICU' or self.args.data == 'MIMIC':
                 early_stopping(-vali_auprc, self.model, path)
             elif self.args.data == 'PAM' or self.args.data == 'activity':
                 early_stopping(-vali_accuracy, self.model, path)
-            # early_stopping(vali_loss, self.model, path)
             if early_stopping.early_stop:
                 print("Early stopping")
                 break
@@ -385,8 +267,6 @@ class Exp_IR_Classification(Exp_Basic):
                     outputs = outputs["outputs_time"]
                     loss = criterion(outputs, label.long().squeeze(-1))
 
-                # pred = outputs.detach()
-                # loss = criterion(pred, label.long().squeeze(-1))
                 total_loss.append(loss.cpu().numpy())
 
                 preds.append(outputs.detach())
@@ -396,12 +276,9 @@ class Exp_IR_Classification(Exp_Basic):
 
         preds = torch.cat(preds, 0)
         trues = torch.cat(trues, 0)
-        # print(f'{vali_data.x_data.shape} shape: {preds.shape} {trues.shape}')
-        # print('test shape:', preds.shape, trues.shape)
         probs = torch.nn.functional.softmax(preds)  # (total_samples, num_classes) est. prob. for each class and sample
         predictions = torch.argmax(probs, dim=1).cpu().numpy()  # (total_samples,) int class index for each sample
         trues = trues.flatten()
-        # auprc = self._select_metric(probs, trues)
         trues = trues.cpu().numpy()
 
         if args.data == 'P12' or args.data == 'P19' or args.data == 'eICU' or args.data == 'PhysioNet' or args.data == 'MIMIC':
@@ -418,10 +295,6 @@ class Exp_IR_Classification(Exp_Basic):
             F1 = 2 * (precision * recall) / (precision + recall)
         accuracy = cal_accuracy(predictions, trues)
 
-        # Saving true labels and predictions
-        np.savetxt('./results/vali_trues.txt', trues, fmt='%d')
-        np.savetxt('./results/vali_predictions.txt', predictions, fmt='%d')
-
         self.model.train()
         if args.data == 'P12' or args.data == 'P19' or args.data == 'eICU' or args.data == 'PhysioNet' or args.data == 'MIMIC':
             return total_loss, accuracy, auprc, auc
@@ -432,15 +305,10 @@ class Exp_IR_Classification(Exp_Basic):
         dim = self.all_data.data_objects["input_dim"]
         if test:
             print('loading model')
-            print("setting: ", setting)
             self.model.load_state_dict(torch.load(os.path.join('./checkpoints/' + setting, 'checkpoint.pth')))
-            # self.model.load_state_dict(torch.load('./checkpoints/classification_ECG_CALF_2500__CALF_ECG_ftM_sl2500_ll0_pl0_dm768_nh4_el2_dl1_df768_fc1_ebtimeF_dtTrue_test_gpt6_0/checkpoint.pth'))
 
         preds = []
         trues = []
-        time_embeddings = []
-        text_embeddings = []
-        cross_attention_weights = []
         folder_path = './test_results/' + setting + '/'
         if not os.path.exists(folder_path):
             os.makedirs(folder_path)
@@ -461,46 +329,17 @@ class Exp_IR_Classification(Exp_Basic):
                     label = label.argmax(-1).reshape(-1)
                 else:
                     outputs = outputs["outputs_time"]
-                    
-                # outputs_time1, outputs_text1 = self.hook.output  # store the embedding
-                # cross_attention_weights.append(self.hook.attention_weights.cpu())
-                # print("attention shape: ", self.hook.attention_weights.cpu().shape)
-
-                # time_embeddings.append(outputs_time1.cpu())
-                # text_embeddings.append(outputs_text1.cpu())
 
                 preds.append(outputs.detach())
                 trues.append(label)
 
-                # for name, param in self.model.in_layer.named_parameters():
-                #     print(f"Layer: {name} | Size: {param.size()}")
-                #
-                # print(f"word embedding shape: {self.model.in_layer.word_embedding.shape} value: {self.model.in_layer.word_embedding}")
-
         preds = torch.cat(preds, 0)
         trues = torch.cat(trues, 0)
-
-        # self.handle.remove()  # remove the hook after use
-        # self.cross_attention_handle.remove()
-        # cross_attention_weights = torch.cat(cross_attention_weights, 0)
-        # print("attention shape: ", cross_attention_weights.shape)
-        # time_embeddings = torch.cat(time_embeddings, 0)
-        # time_channedl_1_embedding = time_embeddings[:, 0, :]
-        # time_channedl_2_embedding = time_embeddings[:, 1, :]
-        # text_embeddings = torch.cat(text_embeddings, 0)
-        # text_channel_1_embedding = text_embeddings[:, 0, :]
-        # text_channel_2_embedding = text_embeddings[:, 1, :]
-        # print("time embedding shape: ", time_channedl_1_embedding.shape)
-        # print("text embedding shape: ", text_channel_1_embedding.shape)
-
-        # print('test shape:', preds.shape, trues.shape)
 
         probs = torch.nn.functional.softmax(preds)  # (total_samples, num_classes) est. prob. for each class and sample
         predictions = torch.argmax(probs, dim=1).cpu().numpy()  # (total_samples,) int class index for each sample
         trues = trues.flatten()
-        # auprc = self._select_metric(probs, trues)
         trues = trues.cpu().numpy()
-        print("predictions shape: ", probs.shape)
 
         if args.data == 'P12' or args.data == 'P19' or args.data == 'eICU' or args.data == 'PhysioNet' or args.data == 'MIMIC':
             auc = roc_auc_score(trues, probs.cpu().numpy()[:, 1]) if not args.classify_pertp else 0.
@@ -517,22 +356,6 @@ class Exp_IR_Classification(Exp_Basic):
                                   average='macro', )
             F1 = 2 * (precision * recall) / (precision + recall)
 
-        # self.visualize_embeddings(time_channedl_1_embedding, trues, title="time_channel_1_token_embedding",
-        #                           setting=setting)
-        # self.visualize_embeddings(time_channedl_2_embedding, trues, title="time_channel_2_token_embedding",
-        #                           setting=setting)
-        #
-        # self.visualize_embeddings(text_channel_1_embedding, trues, title="aligned_text_channel_1_token_embedding",
-        #                           setting=setting)
-        # self.visualize_embeddings(text_channel_2_embedding, trues, title="aligned_text_channel_2_token_embedding",
-        #                           setting=setting)
-
-        # words = ["Trend", "seasonality", "cyclicity", "rise", "peak", "pattern", "shift", "position", "irregular",
-        #          "missing", "inconsistent", "discontinuous", "heart", "period", "echo", "arm", "key", "mint"]
-        #
-        # self.plot_attention_weights(cross_attention_weights, words_list=words, title="dropped_cross_attention_map",
-        #                             setting=setting)
-
         # result save
         folder_path = './results/' + setting + '/'
         if not os.path.exists(folder_path):
@@ -540,7 +363,6 @@ class Exp_IR_Classification(Exp_Basic):
 
         # Compute Confusion Matrix
         cm = confusion_matrix(trues, predictions)
-        # disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=list(range(self.args.num_class)))
         disp = ConfusionMatrixDisplay(confusion_matrix=cm)
         sns.set_context("poster")
         fig, ax = plt.subplots(figsize=(20, 15))
@@ -553,7 +375,7 @@ class Exp_IR_Classification(Exp_Basic):
             print('Accuracy:{}'.format(accuracy))
             print('AUPRC:{}'.format(auprc))
             print('AUC:{}'.format(auc))
-
+            
             file_name = 'result_classification.txt'
             f = open(os.path.join(folder_path, file_name), 'a')
             f.write(setting + "  \n")
@@ -591,9 +413,6 @@ class Exp_IR_Classification(Exp_Basic):
             f.write('\n')
             f.close()
 
-        # Saving true labels and predictions
-        np.savetxt(os.path.join(folder_path, 'test_trues.txt'), trues, fmt='%d')
-        np.savetxt(os.path.join(folder_path, 'test_predictions.txt'), predictions, fmt='%d')
         return
 
     def plot_and_save_metrics(self, setting):
@@ -623,140 +442,4 @@ class Exp_IR_Classification(Exp_Basic):
         plt.title('Loss over Epochs')
         plt.legend()
         plt.savefig(f'./results/{setting}/loss_plot.png')
-        plt.close()
-
-    def visualize_embeddings(self, embeddings, labels, title='t-SNE plot of Word Embeddings', setting=None):
-        """
-        Visualize word embeddings using t-SNE.
-
-        Args:
-        - embeddings (Tensor): Word embeddings to visualize.
-        - labels (list or Tensor): Corresponding labels for the embeddings.
-        - title (str): Title for the plot.
-        """
-        # convert embeddings to numpy array
-        embeddings_np = embeddings.cpu().numpy()
-
-        # apply t-SNE
-        tsne = TSNE(n_components=2, random_state=42, perplexity=30)
-        embeddings_2d = tsne.fit_transform(embeddings_np)
-
-        # create a scatter plot
-        directory = f'./results/{setting}'
-        if not os.path.exists(directory):
-            os.makedirs(directory)
-
-        sns.set_context("poster")
-        plt.figure(figsize=(12, 10))
-        # Get unique labels and plot each with a different color/marker for legend
-        # label_mapping = {0: 'AFIB', 1: 'AFL', 2: 'J', 3: 'N'}
-        # labels_mapped = [label_mapping[label] for label in labels]
-        unique_labels = np.unique(labels)
-        # colors = ['r', 'g', 'b', 'c']
-        # cmap = ListedColormap(colors[:len(np.unique(labels))])
-
-        # colors = plt.cm.get_cmap('viridis', len(unique_labels))  # Use colormap to generate colors for each label
-        #
-        # for i, label in enumerate(unique_labels):
-        #     indices = labels == label
-        #     # Plot points for each category on the same plot with different colors
-        #     plt.scatter(embeddings_2d[indices, 0], embeddings_2d[indices, 1],
-        #                 color=colors(i), label=f'Class {label}', alpha=0.7)
-
-        scatter = plt.scatter(embeddings_2d[:, 0], embeddings_2d[:, 1], c=labels, cmap='viridis', alpha=0.7)
-
-        # add legend with unique labels
-        handles = [plt.Line2D([0], [0], marker='o', color='w', markerfacecolor=scatter.cmap(scatter.norm(label)),
-                              markersize=10) for label in unique_labels]
-        # handles = [plt.Line2D([0], [0], marker='o', color='w', markerfacecolor=colors[i], markersize=8, label=f'Class {label}') for i, label in enumerate(unique_labels)]
-        plt.legend(handles, unique_labels, title="Labels", loc='upper left', markerscale=2.2, fontsize=45)
-        # plt.legend(title='Class', handles=handles, loc='best')
-
-        # cbar = plt.colorbar(scatter)
-        # cbar.set_label('Class')
-        # plt.title(title)
-        # Remove ticks
-        plt.gca().set_xticks([])
-        plt.gca().set_yticks([])
-        plt.xlabel('Dimension 1', fontsize=45)
-        plt.ylabel('Dimension 2', fontsize=45)
-        plt.gca().spines['top'].set_visible(False)
-        plt.gca().spines['right'].set_visible(False)
-        # plt.legend(title='Categories', loc='best')
-        plt.tight_layout()
-        plt.savefig(f'./results/{setting}/{title}.png')
-        plt.close()
-
-    # def plot_attention_weights(self, attention_weights, words_list, title='Cross Attention Map', setting=None):
-    #     """Plot the cross-attention weights captured by the hook."""
-    #     print("attention_weights shape: ", attention_weights.shape)
-    #     # attention_weights_np = attention_weights.mean(dim=1).numpy()  # Average across channel
-    #     attention_weights_np = attention_weights[:, 1, :].numpy()  # Select the first channel
-    #
-    #     sns.set_context("poster", font_scale=1.2)
-    #     plt.figure(figsize=(22, 28))
-    #     # sns.heatmap(attention_weights_np, cmap='viridis', cbar=True)
-    #     plt.imshow(attention_weights_np, aspect='auto', cmap='viridis', interpolation='nearest')
-    #     plt.xticks(ticks=np.arange(len(words_list)), labels=words_list, rotation=90, fontsize=42)
-    #     plt.yticks(ticks=np.arange(10), labels=list(range(1, 11)))
-    #
-    #     cbar = plt.colorbar()
-    #     cbar.set_label('Relevance Score', rotation=270, labelpad=42)
-    #     plt.xlabel('Selected Words')
-    #     plt.ylabel("Time Series Instances")
-    #     # plt.title(title)
-    #     plt.savefig(f'./results/{setting}/{title}.png')
-    #     plt.close()
-
-    # rot90
-    # def plot_attention_weights(self, attention_weights, words_list, title='Cross Attention Map', setting=None):
-    #     """Plot the cross-attention weights captured by the hook."""
-    #     print("attention_weights shape: ", attention_weights.shape)
-    #     # Select the first channel
-    #     attention_weights_np = attention_weights[:, 1, :].numpy()
-    #
-    #     # Rotate the attention weights 90 degrees clockwise
-    #     attention_weights_np = np.rot90(attention_weights_np, k=-1)  # or k=3
-    #
-    #     sns.set_context("poster", font_scale=1)
-    #     plt.figure(figsize=(30, 10))  # Adjusted figsize for the rotated plot
-    #
-    #     # Plot the rotated attention weights
-    #     plt.imshow(attention_weights_np, aspect='auto', cmap='viridis', interpolation='nearest')
-    #     plt.xticks(ticks=np.arange(10), labels=list(range(1, 11)))  # Updated to match the new orientation
-    #     plt.yticks(ticks=np.arange(len(words_list)), labels=words_list, rotation=0, fontsize=28)  # Adjusted rotation
-    #
-    #     cbar = plt.colorbar()
-    #     cbar.set_label('Relevance Score', rotation=270, labelpad=28)
-    #     plt.xlabel('Time Series Instances')
-    #     # plt.ylabel("Selected Words")
-    #     # plt.title(title)
-    #     plt.savefig(f'./results/{setting}/{title}.png')
-    #     plt.close()
-
-    # without rot90
-    def plot_attention_weights(self, attention_weights, words_list, title='Cross Attention Map', setting=None):
-        """Plot the cross-attention weights captured by the hook."""
-        print("attention_weights shape: ", attention_weights.shape)
-        # Select the first channel
-        attention_weights_np = attention_weights[:, 1, :].numpy()
-
-        # # Rotate the attention weights 90 degrees clockwise
-        # attention_weights_np = np.rot90(attention_weights_np, k=-1)  # or k=3
-
-        sns.set_context("poster", font_scale=1.4)
-        plt.figure(figsize=(35, 80))  # Adjusted figsize for the rotated plot
-
-        # Plot the rotated attention weights
-        plt.imshow(attention_weights_np, aspect='auto', cmap='viridis', interpolation='nearest')
-        plt.xticks(ticks=np.arange(len(words_list)), labels=words_list, rotation=90, fontsize=80)
-        plt.yticks(ticks=np.arange(10), labels=list(range(1, 11)), fontsize=80)
-
-        cbar = plt.colorbar()
-        cbar.set_label('Relevance Score', rotation=270, labelpad=120, fontsize=80)
-        cbar.ax.tick_params(labelsize=65)
-        # plt.xlabel("Selected Words")
-        plt.ylabel('Time Series Instances', fontsize=80)
-        # plt.title(title)
-        plt.savefig(f'./results/{setting}/{title}.png')
         plt.close()

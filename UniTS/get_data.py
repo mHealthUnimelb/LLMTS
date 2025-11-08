@@ -224,20 +224,13 @@ def get_data(args, dataset, device, q=0.016, upsampling_batch=True, flag=1):
                          (record_id, tt, vals, mask, label) in total_dataset]
 
     elif dataset == 'activity':
-        # args.pred_window = 1000
         total_dataset = PersonActivity('datasets/activity/', n_samples = int(1e8), download=True, device = device)
-        # total_dataset = torch.load('./data/activiaty/processed/data.pt', map_location='cpu')
 
 
     print('len(total_dataset):', len(total_dataset))
     print("total_dataset[0]:", total_dataset[0])
 
     global_tt = torch.unique(torch.cat([tpl[1] for tpl in total_dataset]), sorted=True)
-
-    # if split_type == 'random':
-    #     # Shuffle and split
-    #     train_data, test_data = model_selection.train_test_split(total_dataset, train_size=0.9,
-    #                                                              shuffle=True)  # 80% train, 10% validation, 10% test
 
     if dataset == 'P12':
         # get recorde_id from PTdict_list.npy
@@ -272,44 +265,6 @@ def get_data(args, dataset, device, q=0.016, upsampling_batch=True, flag=1):
         test_data = [total_dataset[i] for i in idx_test]
         print("test_data[0]:", test_data[0])
 
-    # write_split_to_ts(
-    #     train_ds=train_data,
-    #     val_ds=val_data,
-    #     test_ds=test_data,
-    #     out_dir=args.out_dir,
-    #     base_name=args.base_name,
-    # )
-
-    # elif split_type == 'age' or split_type == 'gender':
-    #     if dataset == 'P12':
-    #         prefix = 'mtand'
-    #     elif dataset == 'P19':
-    #         prefix = 'P19'
-    #     elif dataset == 'eICU':   # possible only with split_type == 'gender'
-    #         prefix = 'eICU'
-    #
-    #     if split_type == 'age':
-    #         if dataset == 'eICU':
-    #             print('\nCombination of eICU dataset and age split is not possible.\n')
-    #         if reverse == False:
-    #             idx_train = np.load('%s_idx_under_65.npy' % prefix, allow_pickle=True)
-    #             idx_vt = np.load('%s_idx_over_65.npy' % prefix, allow_pickle=True)
-    #         else:
-    #             idx_train = np.load('%s_idx_over_65.npy' % prefix, allow_pickle=True)
-    #             idx_vt = np.load('%s_idx_under_65.npy' % prefix, allow_pickle=True)
-    #     elif split_type == 'gender':
-    #         if reverse == False:
-    #             idx_train = np.load('%s_idx_male.npy' % prefix, allow_pickle=True)
-    #             idx_vt = np.load('%s_idx_female.npy' % prefix, allow_pickle=True)
-    #         else:
-    #             idx_train = np.load('%s_idx_female.npy' % prefix, allow_pickle=True)
-    #             idx_vt = np.load('%s_idx_male.npy' % prefix, allow_pickle=True)
-    #
-    #     np.random.shuffle(idx_train)
-    #     np.random.shuffle(idx_vt)
-    #     train_data = [total_dataset[i] for i in idx_train]
-    #     test_data = [total_dataset[i] for i in idx_vt]
-
     # tt: time steps, vals: observed values, mask: which values are observed
     record_id, tt, vals, mask, labels = train_data[0]
 
@@ -322,76 +277,13 @@ def get_data(args, dataset, device, q=0.016, upsampling_batch=True, flag=1):
 
     if flag:
         if args.classif:
-            # if split_type == 'random':
-            #     train_data, val_data = model_selection.train_test_split(train_data, train_size=0.8889,
-            #                                                             shuffle=False)  # 80% train, 10% validation, 10% test
             print("train len:", len(train_data))
             print("val len:", len(val_data))
             print("test len:", len(test_data))
-            # elif split_type == 'age' or split_type == 'gender':
-            #     val_data, test_data = model_selection.train_test_split(test_data, train_size=0.5, shuffle=False)
-
-            # if dataset == 'P12':
-            #     num_all_features = 36
-            # elif dataset == 'P19':
-            #     num_all_features = 34
-            # elif dataset == 'eICU':
-            #     num_all_features = 14
-            # elif dataset == 'PAM':
-            #     num_all_features = 17
-
-            # num_missing_features = round(missing_ratio * num_all_features)
-            # if feature_removal_level == 'sample':
-            #     for i, tpl in enumerate(val_data):
-            #         idx = np.random.choice(num_all_features, num_missing_features, replace=False)
-            #         _, _, values, _, _ = tpl
-            #         tpl = list(tpl)
-            #         values[:, idx] = torch.zeros(values.shape[0], num_missing_features)
-            #         tpl[2] = values
-            #         val_data[i] = tuple(tpl)
-            #     for i, tpl in enumerate(test_data):
-            #         idx = np.random.choice(num_all_features, num_missing_features, replace=False)
-            #         _, _, values, _, _ = tpl
-            #         tpl = list(tpl)
-            #         values[:, idx] = torch.zeros(values.shape[0], num_missing_features)
-            #         tpl[2] = values
-            #         test_data[i] = tuple(tpl)
-            # elif feature_removal_level == 'set':
-            #     if dataset == 'P12':
-            #         dict_params = total_dataset.params_dict
-            #         density_scores_names = np.load('../saved/IG_density_scores_P12.npy', allow_pickle=True)[:, 1]
-            #         idx = [dict_params[name] for name in density_scores_names[:num_missing_features]]
-            #     elif dataset == 'P19':
-            #         labels_ts = np.load('../../../P19data/processed_data/labels_ts.npy', allow_pickle=True)
-            #         dict_params = {label: i for i, label in enumerate(labels_ts[:-1])}
-            #         density_scores_names = np.load('../saved/IG_density_scores_P19.npy', allow_pickle=True)[:, 1]
-            #         idx = [dict_params[name] for name in density_scores_names[:num_missing_features]]
-            #     elif dataset == 'eICU':
-            #         labels_ts = np.load('../../../eICUdata/processed_data/eICU_ts_vars.npy', allow_pickle=True)
-            #         dict_params = {label: i for i, label in enumerate(labels_ts)}
-            #         density_scores_names = np.load('../saved/IG_density_scores_eICU.npy', allow_pickle=True)[:, 1]
-            #         idx = [dict_params[name] for name in density_scores_names[:num_missing_features]]
-            #     elif dataset == 'PAM':
-            #         density_scores_indices = np.load('../saved/IG_density_scores_PAM.npy', allow_pickle=True)[:, 0]
-            #         idx = list(map(int, density_scores_indices[:num_missing_features]))
-            #
-            #     for i, tpl in enumerate(val_data):
-            #         _, _, values, _, _ = tpl
-            #         tpl = list(tpl)
-            #         values[:, idx] = torch.zeros(values.shape[0], num_missing_features)
-            #         tpl[2] = values
-            #         val_data[i] = tuple(tpl)
-            #     for i, tpl in enumerate(test_data):
-            #         _, _, values, _, _ = tpl
-            #         tpl = list(tpl)
-            #         values[:, idx] = torch.zeros(values.shape[0], num_missing_features)
-            #         tpl[2] = values
-            #         test_data[i] = tuple(tpl)
 
             if upsampling_batch:
                 train_data_upsamled = []
                 true_labels = np.array([float(x[4].item()) for x in train_data])
-                # true_labels = np.array(list(map(lambda x: float(x[7]), np.array(train_data)[:, 4])))
                 if dataset == 'P12' or dataset == 'P19' or dataset == 'eICU':  # 2 classes
                     idx_0 = np.where(true_labels == 0)[0]
                     print("idx_0 length", len(idx_0))
@@ -527,11 +419,6 @@ def variable_time_collate_fn(batch, args, device=torch.device("cpu"), classify=F
         if labels is not None:
             combined_labels[b] = labels
 
-    # if not hasattr(variable_time_collate_fn, "_rows"):
-    #     variable_time_collate_fn._rows = []
-    #     variable_time_collate_fn._labels = []
-    #     variable_time_collate_fn._lens = []
-    #     variable_time_collate_fn._dims = D
     ts_rows = []
     ts_labels = []
     ts_lens = []
@@ -541,29 +428,10 @@ def variable_time_collate_fn(batch, args, device=torch.device("cpu"), classify=F
     for b in range(len(batch)):
         lbl = int(combined_labels[b].item()) if classify else 0
         row = vals_mask_to_ts_row(combined_vals[b], combined_mask[b], lbl)
-        # variable_time_collate_fn._rows.append(row)
-        # variable_time_collate_fn._labels.append(lbl)
-        # variable_time_collate_fn._lens.append(combined_vals[b].shape[0])
         ts_rows.append(row)
         ts_labels.append(lbl)
         ts_lens.append(combined_vals[b].shape[0])
 
-    # When we've accumulated the entire split, write once.
-    # if len(variable_time_collate_fn._rows) >= current_split_len \
-    #     and not getattr(variable_time_collate_fn, "_written", False):
-    #     split = ts_split.upper()            # TRAIN / VAL / TEST
-    #     fname = f"{args.base_name}_{split}.ts"
-    #     out = args.out_dir / fname
-
-    #     write_ts_file(
-    #         rows=variable_time_collate_fn._rows,
-    #         dims=variable_time_collate_fn._dims,
-    #         classes=list(set(variable_time_collate_fn._labels)),
-    #         seq_lengths=variable_time_collate_fn._lens,
-    #         out_path=out,
-    #         problem_name=f"{args.base_name}_{split.lower()}"
-    #     )
-    #     variable_time_collate_fn._written = True
     split = ts_split.upper() # TRAIN / VAL / TEST
     fname = f"{args.base_name}_{split}.ts"
     out = args.out_dir / fname
@@ -591,65 +459,6 @@ def variable_time_collate_fn(batch, args, device=torch.device("cpu"), classify=F
         return combined_data, combined_labels
     else:
         return combined_data
-
-
-# def variable_time_collate_fn_activity(batch, args, device=torch.device("cpu"), classify=False, global_tt=None):
-#     """
-#     Expects a batch of time series data in the form of (record_id, tt, vals, mask, labels) where
-#         - record_id is a patient id
-#         - tt is a 1-dimensional tensor containing T time values of observations.
-#         - vals is a (T, D) tensor containing observed values for D variables.
-#         - mask is a (T, D) tensor containing 1 where values were observed and 0 otherwise.
-#         - labels is a list of labels for the current patient, if labels are available. Otherwise None.
-#     Returns:
-#         combined_tt: The union of all time observations.
-#         combined_vals: (M, T, D) tensor containing the observed values.
-#         combined_mask: (M, T, D) tensor containing 1 where values were observed and 0 otherwise.
-#     """
-#     # print("batch shape", batch.shape)
-#     D = batch[0][2].shape[1]
-#     N = batch[0][-1].shape[1]  # number of labels
-
-#     combined_tt = global_tt.to(device)
-#     # combined_tt, inverse_indices = torch.unique(torch.cat([ex[1] for ex in batch]), sorted=True, return_inverse=True)
-#     # combined_tt = combined_tt.to(device)
-#     # combined_tt = combined_tt.unsqueeze(0).expand(len(batch), -1)
-#     print("combined_tt shape", combined_tt.shape) # [217]
-
-#     offset = 0
-#     combined_vals = torch.zeros([len(batch), len(combined_tt), D]).to(device)
-#     combined_mask = torch.zeros([len(batch), len(combined_tt), D]).to(device)
-#     combined_labels = torch.zeros([len(batch), len(combined_tt), N]).to(device)
-
-#     for b, (record_id, tt, vals, mask, labels) in enumerate(batch):
-#         tt = tt.to(device)
-#         vals = vals.to(device)
-#         mask = mask.to(device)
-#         labels = labels.to(device)
-
-#         # indices = inverse_indices[offset:offset + len(tt)]
-#         # offset += len(tt)
-#         indices = torch.searchsorted(global_tt, tt)
-
-#         combined_vals[b, indices] = vals
-#         combined_mask[b, indices] = mask
-#         combined_labels[b, indices] = labels
-
-#     combined_tt = combined_tt.float()
-
-#     if torch.max(combined_tt) != 0.:
-#         combined_tt = combined_tt / torch.max(combined_tt)
-
-#     B = combined_vals.size(0)
-#     T = combined_tt.size(0)
-#     combined_tt = combined_tt.view(1, T, 1).expand(B, T, 1).to(device)
-#     print("combined_tt shape", combined_tt.shape) # ([1311, 217, 1])
-#     combined_data = torch.cat((combined_vals, combined_mask, combined_tt), 2)
-    
-#     if classify:
-#         return combined_data, combined_labels
-#     else:
-#         return combined_data
 
 def variable_time_collate_fn_activity(batch, args, device=torch.device("cpu"), classify=False, activity=True, data_min=None, data_max=None, ts_split='TRAIN'):
     """
@@ -697,9 +506,6 @@ def variable_time_collate_fn_activity(batch, args, device=torch.device("cpu"), c
     for b in range(len(batch)):
         lbl = int(combined_labels[b].item()) if classify else 0
         row = vals_mask_to_ts_row(enc_combined_vals[b], enc_combined_mask[b], lbl)
-        # variable_time_collate_fn._rows.append(row)
-        # variable_time_collate_fn._labels.append(lbl)
-        # variable_time_collate_fn._lens.append(combined_vals[b].shape[0])
         ts_rows.append(row)
         ts_labels.append(lbl)
         ts_lens.append(enc_combined_vals[b].shape[0])
@@ -730,141 +536,12 @@ def variable_time_collate_fn_activity(batch, args, device=torch.device("cpu"), c
     else:
         return combined_data
 
-# def _split_vals_and_mask(sample):
-#     """
-#     `sample` is the (T, D_total) matrix produced by variable_time_collate_fn
-#     where  D_total = D_feats + D_feats + 1  (values ‖ mask ‖ time‑stamp).
-#
-#     Returns
-#         vals  – tensor  (T, D_feats)
-#         mask  – tensor  (T, D_feats)
-#     """
-#     D_total = sample.size(1)
-#     D_feats = (D_total - 1) // 2
-#     vals = sample[:, :D_feats]
-#     mask = sample[:, D_feats:2 * D_feats]
-#     print("vals[0]", vals[0])
-#     print("mask[0]", mask[0])
-#     return vals, mask
-#
-#
-# def _tensor_to_str(vals, mask):
-#     """
-#     Turn a pair of  (T, D) tensors into the colon‑and‑comma
-#     representation required by `.ts`.
-#
-#     Missing points (mask==0)  → '?'
-#     """
-#     seq = []
-#     T, D = vals.size() # T: time steps, D: number of variables
-#     # # optionally truncate trailing all‑missing time steps
-#     # valid_rows = torch.any(mask.bool(), dim=1)
-#     # if valid_rows.any():
-#     #     last = torch.nonzero(valid_rows, as_tuple=True)[0][-1].item() + 1
-#     #     vals, mask = vals[:last], mask[:last]
-#
-#     for d in range(D):
-#         col = []
-#         for t in range(vals.size(0)):
-#             if mask[t, d] == 0:
-#                 col.append('?')
-#             else:
-#                 v = vals[t, d].item()
-#                 # use a compact representation; drop ".0" for ints
-#                 # s = str(int(v)) if math.isclose(v, round(v)) else f'{v:.6g}'
-#                 s = str(v)
-#                 print("val:", s)
-#                 col.append(s)
-#         seq.append(','.join(col))
-#     return ':'.join(seq)
-#
-#
-# def write_ts_file(dataset, path, problem_name):
-#     """
-#     dataset       – the *TensorDataset* returned by variable_time_collate_fn
-#                     (each element is (combined_data, label))
-#     path          – full filename to write
-#     problem_name  – string for the @problemName header
-#     """
-#     # collect meta‑info
-#     first_vals, _ = _split_vals_and_mask(dataset[0][0])
-#     D = first_vals.size(1)
-#     lengths = []
-#     labels = []
-#
-#     rows = []
-#     for sample, label in dataset:
-#         vals, mask = _split_vals_and_mask(sample)
-#         rows.append(_tensor_to_str(vals, mask))
-#         lengths.append(vals.size(0))
-#         labels.append(int(label.item()))
-#
-#     univariate = (D == 1)
-#     equal_length = len(set(lengths)) == 1
-#     missing = True                           # we always allow '?'
-#
-#     # header
-#     header = [
-#         f"@problemName {problem_name}",
-#         f"@missing {'true' if missing else 'false'}",
-#         f"@univariate {'true' if univariate else 'false'}",
-#     ]
-#     if not univariate:
-#         header.append(f"@dimensions {D}")
-#     header.append(f"@equalLength {'true' if equal_length else 'false'}")
-#     if equal_length:
-#         header.append(f"@seriesLength {lengths[0]}")
-#     # classification ⇢ @classLabel
-#     classes = sorted(set(labels))
-#     header.append("@classLabel true " + ' '.join(map(str, classes)))
-#     header.append("@data")
-#
-#     # body
-#     with open(path, "w") as f:
-#         f.write('\n'.join(header) + '\n')
-#         for row, lab in zip(rows, labels):
-#             f.write(f"{row}:{lab}\n")
-#
-#     print(f"Wrote {len(rows)} series to {path}")
-
-# def _tensor_to_ts_row(vals, mask):
-#     """
-#     Convert one (T, D) values tensor *and its mask* to
-#     a single .ts row:  dim0 , dim0 , … : dim1 , dim1 , … : … :label
-#     Missing points (mask==0) become '?'.
-#     """
-#     T, D = vals.shape
-#     # remove trailing all-missing timesteps to save space
-#     # valid_rows = torch.any(mask.bool(), dim=1)
-#     # if valid_rows.any():
-#     #     vals = vals[:valid_rows.nonzero()[-1] + 1]
-#     #     mask = mask[:valid_rows.nonzero()[-1] + 1]
-
-#     dim_strings = []
-#     for d in range(D):
-#         col = []
-#         for t in range(vals.size(0)):
-#             if mask[t, d] == 0:
-#                 col.append('?')
-#             else:
-#                 v = vals[t, d].item()
-#                 # s = str(int(v)) if math.isclose(v, round(v)) else f'{v:.6g}'
-#                 s = str(v)
-#                 col.append(s)
-#         dim_strings.append(','.join(col))
-#     return ':'.join(dim_strings)  # no label yet – appended later
-
 
 def vals_mask_to_ts_row(values, msk, lbl):
     """
     Convert one (T,D) `values` tensor *and* its `mask` tensor into a single
     `.ts` row string.  Missing entries (mask==0) become '?'.
     """
-    # remove trailing all-missing time steps
-    # non_empty = torch.any(msk.bool(), dim=1)
-    # if non_empty.any():
-    #     last = non_empty.nonzero()[-1].item() + 1
-    #     values, msk = values[:last], msk[:last]
     dims = []
     for d in range(values.size(1)):
         col = []
@@ -877,45 +554,6 @@ def vals_mask_to_ts_row(values, msk, lbl):
                 col.append(str(v))
         dims.append(','.join(col))
     return ':'.join(dims) + f":{lbl}"
-
-
-# def write_ts_file(split, path, problem_name):
-#     """split = list of raw tuples; write one .ts file at *path*."""
-#     # peek at dimensionality
-#     _, _, first_vals, _, _ = split[0]
-#     D = first_vals.size(1)
-#     lengths = []
-#     labels = []
-#     rows = []
-
-#     for _, _, vals, mask, label in split:
-#         rows.append(_tensor_to_ts_row(vals, mask))
-#         lengths.append(vals.size(0))
-#         labels.append(int(label.item()))
-
-#     header = [
-#         f"@problemName {problem_name}",
-#         "@missing true",
-#         f"@univariate {'true' if D == 1 else 'false'}",
-#     ]
-#     if D > 1:
-#         header.append(f"@dimensions {D}")
-
-#     equal_length = len(set(lengths)) == 1
-#     header.append(f"@equalLength {'true' if equal_length else 'false'}")
-#     if equal_length:
-#         header.append(f"@seriesLength {lengths[0]}")
-
-#     classes = sorted(set(labels))
-#     header.append("@classLabel true " + ' '.join(map(str, classes)))
-#     header.append("@data")
-
-#     with open(path, "w") as f:
-#         f.write('\n'.join(header) + '\n')
-#         for row, lab in zip(rows, labels):
-#             f.write(f"{row}:{lab}\n")
-
-#     print(f"Wrote {len(rows)} series to {path}")
 
 
 def write_ts_file(rows, dims, classes, seq_lengths, out_path, problem_name):
@@ -943,19 +581,6 @@ def write_ts_file(rows, dims, classes, seq_lengths, out_path, problem_name):
         f.write('\n'.join(rows) + '\n')
 
     print(f"Wrote {len(rows)} rows -> {out_path}")
-
-
-# ------------------------------------------------------------------
-# 3.  Convenience wrapper
-# ------------------------------------------------------------------
-# def write_split_to_ts(train_ds, val_ds, test_ds, out_dir, base_name):
-#     os.makedirs(out_dir, exist_ok=True)
-#     write_ts_file(train_ds, os.path.join(out_dir, f"{base_name}_TRAIN.ts"),
-#                   problem_name=f"{base_name}_train")
-#     write_ts_file(val_ds, os.path.join(out_dir, f"{base_name}_VAL.ts"),
-#                   problem_name=f"{base_name}_val")
-#     write_ts_file(test_ds, os.path.join(out_dir, f"{base_name}_TEST.ts"),
-#                   problem_name=f"{base_name}_test")
 
 
 if __name__ == '__main__':

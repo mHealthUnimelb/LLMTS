@@ -1,5 +1,0 @@
-ir_classification_P12_S2IPLLM_TimeLLM_encoder_P12_phy12_split1_ftM_sl2881_ll1_pl0_dm768_nh8_el2_dl1_df2048_fc1_ebtimeF_dtTrue_Exp_0  
-Accuracy:0.8657214345287739
-AUPRC:0.32596905613705585
-AUC:0.7712670105014604
-

@@ -2,7 +2,7 @@ CUDA_VISIBLE_DEVICES=0 python -u run_mTAN_encoder.py \
   --seed 123 \
   --task_name ir_classification_mTAN \
   --is_training 1 \
-  --root_path ./data/MIMIC \
+  --root_path ../../datasets/MIMIC \
   --data_path MIMIC \
   --model_id few_shot_MIMIC_2_S2IPLLM_mTAN_encoder \
   --model S2IPLLM_mTAN_encoder \

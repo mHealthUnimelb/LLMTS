@@ -2,12 +2,12 @@ CUDA_VISIBLE_DEVICES=0 python -u run_mTAN_encoder.py \
   --seed 123 \
   --task_name ir_classification_mTAN \
   --is_training 1 \
-  --root_path ./data/MIMIC \
+  --root_path ../../datasets/MIMIC \
   --data_path MIMIC \
   --model_id MIMIC_2 \
   --model S2IPLLM_mTAN_encoder \
   --data MIMIC \
-  --data_split_path ./data/MIMIC_split2.npy \
+  --data_split_path ./MIMIC_split2.npy \
   --number_variable 96 \
   --features M \
   --num_ref_points 256 \

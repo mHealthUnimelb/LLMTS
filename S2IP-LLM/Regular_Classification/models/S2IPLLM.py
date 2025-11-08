@@ -146,9 +146,7 @@ class Model(nn.Module):
 
 
     def classify(self, x_enc, x_mark_enc=None, x_dec=None, x_mark_dec=None):
-        print("x_enc shape: ", x_enc.shape)
         B, L, M = x_enc.shape
-        print(f'X shape: {B}, L shape: {L}, M shape: {M}')  # B: 3  L: 2881  M: 83
 
         # normalization
         means = x_enc.mean(1, keepdim=True).detach()
@@ -159,7 +157,6 @@ class Model(nn.Module):
 
         # flatten (B, L, M) => (B*M, L) apply decomposition for each feature
         x = rearrange(x_enc, 'b l m -> (b m) l')
-        print("x_enc shape: ", x_enc.shape)  # [3, 2881, 83]
 
         # decomposition function
         def decompose(x):
@@ -174,55 +171,28 @@ class Model(nn.Module):
             return combined
 
         decomp_results = np.apply_along_axis(decompose, 1, x.cpu().numpy())
-        print("decomp_results shape: ", decomp_results.shape)  # [249 (batch_size*feature_dim), 2881, 3, 1]
         x = torch.tensor(decomp_results).to(self.gpt2.device)
         x = rearrange(x, 'b l c d  -> b c (d l)', c=3)
-        print("x shape: ", x.shape)  # [249, 3, 2881]
         x = self.padding_patch_layer(x)
-        print("x shape: ", x.shape)  # [249, 3, 2889]
         x = x.unfold(dimension=-1, size=self.patch_size, step=self.stride)  # patching
-        print("x shape: ", x.shape)  # [249, 3, 360, 16] [(batch_size*feature_dim), 3(decomp), num_patches, patch_size]
         x = rearrange(x, 'b c n p -> b n (c p)', c=3)
-        print("x shape: ", x.shape)  # [249, 360, 48] [(batch_size*feature_dim), num_patches, 3(decomp) * patch_size]
         pre_prompted_embedding = self.in_layer(x.float())  # map 3(decomp) * patch_size to llm embedding_dim
-        print("pre_prompted_embedding shape: ", pre_prompted_embedding.shape)  # [249, 360, 768]
 
         outs = self.prompt_pool(pre_prompted_embedding)  # add prompt embedding
         prompted_embedding = outs['prompted_embedding']
-        print("prompted_embedding shape: ",
-              prompted_embedding.shape)  # [249, 364, 768] [(batch_size*feature_dim), num_patches + prompt, embedding_dim]
         sim = outs['similarity']
         prompt_key = outs['prompt_key']
         simlarity_loss = outs['reduce_sim']
         total_prompt_len = outs['total_prompt_len']
 
         last_embedding = self.gpt2(inputs_embeds=prompted_embedding).last_hidden_state
-        print("last_embedding shape: ", last_embedding.shape)  # [249 (batch_size*feature_dim), 364, 768]
         outputs = last_embedding.reshape(B * M * 3, -1)
-        print("outputs shape: ", outputs.shape) # [747, 93184]
 
         outputs = rearrange(outputs, '(b m c) h -> b m c h', b=B, m=M, c=3)
-        print("outputs shape: ", outputs.shape) # [3, 83, 3, 93184]
         outputs = outputs.sum(dim=2)
-        print("outputs shape: ", outputs.shape) # [3, 83, 93184]
         
-        # if self.configs.classify_pertp:
-        #     outputs = self.projection_layer(outputs)
-        #     outputs = outputs.permute(0, 2, 1)
-        #     print("outputs shape: ", outputs.shape)
-        #     logits = self.classifier(outputs)
-        # else:
         outputs = outputs.reshape(B, -1)
-        # nan_rows_mask = torch.isnan(outputs).all(dim=1)   # True where an entire row is NaN
-        # num_nan_rows  = nan_rows_mask.sum().item()  # count them
-        # print(f"logits before {num_nan_rows} rows are completely NaN")
-        print("outputs shape: ", outputs.shape) # [3, 7734272]
-
         logits = self.classifier(outputs)
-        # nan_rows_mask = torch.isnan(logits).all(dim=1)   # True where an entire row is NaN
-        # num_nan_rows  = nan_rows_mask.sum().item()  # count them
-        # print(f"after classifer {num_nan_rows} rows are completely NaN")
-        print("logits shape", logits.shape)
 
         res = dict()
         res['simlarity_loss'] = simlarity_loss

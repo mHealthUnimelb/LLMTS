@@ -70,12 +70,5 @@ def main():
         data2 = pd.read_pickle(file)
     print(f"Shape after dropping {args.drop_percentage} of data: {data2.shape}")
 
-    # plot dropped signals
-    # plot_signals(data2)
-
 if __name__ == '__main__':
     main()
-
-# plot the modified signals
-# plot_signals(data1)
-# plot_signals(dropped_10_x_test)

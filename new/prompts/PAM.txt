@@ -1,1 +1,0 @@
-This dataset measures daily living activities of 9 subjects with 3 inertial measurement units. This dataset has 8 activities where each class represents an activity of daily living. This dataset contains 5,333 segments (samples) of sensory signals. Each sample is measured by 17 sensors and contains 600 continuous observations with the sampling frequency 100 Hz.

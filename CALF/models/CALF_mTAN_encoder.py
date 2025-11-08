@@ -1,3 +1,5 @@
+# Use encoder from mTAND
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -25,15 +27,12 @@ class multiTimeAttention(nn.Module):
 
     def attention(self, query, key, value, mask=None, dropout=None):
         "Compute 'Scaled Dot Product Attention'"
-        print(f"attention query shape: {query.shape}, key shape: {key.shape}, value shape: {value.shape}, mask shape: {mask.shape}")
-        # attention query shape: torch.Size([1, 1, 128, 128]), key shape: torch.Size([128, 1, 190, 128]), value shape: torch.Size([128, 1, 190, 82]), mask shape: torch.Size([128, 1, 190, 82])
         dim = value.size(-1)
         d_k = query.size(-1)
         scores = torch.matmul(query, key.transpose(-2, -1)) \
                  / math.sqrt(d_k)
         scores = scores.unsqueeze(-1).repeat_interleave(dim, dim=-1)
-        print("scores shape: ", scores.shape) # (128, 1, 128, 190, 82)
-        print("mask shape: ", mask.shape) # (128, 1, 190, 82)
+
         if mask is not None:
             scores = scores.masked_fill(mask.unsqueeze(-3) == 0, -1e9)
         p_attn = F.softmax(scores, dim=-2)
@@ -43,16 +42,15 @@ class multiTimeAttention(nn.Module):
 
     def forward(self, query, key, value, mask=None, dropout=None):
         "Compute 'Scaled Dot Product Attention'"
-        print(
-            f"forward query shape: {query.shape}, key shape: {key.shape}, value shape: {value.shape}, mask shape: {mask.shape}")
+        
         batch, seq_len, dim = value.size()
-        print(f"batch: {batch}, seq_len: {seq_len}, dim: {dim}") # 128, 190, 768
+
         if mask is not None:
             # Same mask applied to all h heads.
             mask = mask.unsqueeze(1)
-        print("mask shape: ", mask.shape)
+        
         value = value.unsqueeze(1)
-        print("value shape: ", value.shape)
+
         query, key = [l(x).view(x.size(0), -1, self.h, self.embed_time_k).transpose(1, 2)
                       for l, x in zip(self.linears, (query, key))]
         x, _ = self.attention(query, key, value, mask, dropout)
@@ -73,7 +71,6 @@ class enc_mtan(nn.Module):
         self.device = device
         self.nhidden = nhidden
         self.query = query
-        print("query shape: ", query.shape)
         self.patch_len = patch_len
         self.stride = stride
         self.patch_num = 0
@@ -91,7 +88,6 @@ class enc_mtan(nn.Module):
 
     def learn_time_embedding(self, tt):
         tt = tt.to(self.device)
-        print("tt shape: ", tt.shape) # (128, 2, 100)   (1, 256)
         tt = tt.unsqueeze(-1)
         out2 = torch.sin(self.periodic(tt))
         out1 = self.linear(tt)
@@ -118,7 +114,6 @@ class enc_mtan(nn.Module):
             query = self.time_embedding(self.query.unsqueeze(0), self.embed_time).to(self.device)
 
         out = self.time_att(query, key, x, mask)  # batch_size, num_ref_points, embed_dim
-        print("out shape: ", out.shape)
 
         batch_size, seq_len, dim = out.shape
 
@@ -126,16 +121,12 @@ class enc_mtan(nn.Module):
         out = rearrange(out, 'b l m -> b m l')
         out = self.padding_patch_layer(out)
         out = out.unfold(dimension=-1, size=self.patch_len, step=self.stride)
-        print("out shape", out.shape) # (batch, dim, num_patches, patch_len)
         out = out.permute(0, 2, 3, 1).contiguous() # (batch, num_patches, patch_len, dim)
-
-        # self.patch_num = out.shape[1]
 
         # lstm
         out = out.view(batch_size * self.patch_num, self.patch_len, self.nhidden)
         _, (out, _) = self.local_lstm(out)
         out = out.squeeze(0).view(batch_size, self.patch_num, self.nhidden)
-        print("out shape: ", out.shape)
 
         return out
 
@@ -143,12 +134,7 @@ class Encoder_PCA(nn.Module):
     def __init__(self, input_dim, word_embedding, hidden_dim=768, num_heads=1, num_encoder_layers=1, device='cpu',
                  num_ref_points=128, learn_emb=True, num_ca_heads=1, configs=None):
         super(Encoder_PCA, self).__init__()
-        # self.linear = nn.Linear(input_dim, hidden_dim)
-        print("input dim: ", input_dim)
-
-        # encoder_layer = nn.TransformerEncoderLayer(d_model=hidden_dim, nhead=num_heads)
-        # self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_encoder_layers)
-
+        
         self.encoder = enc_mtan(input_dim, torch.linspace(0, 1., num_ref_points), nhidden=hidden_dim,
                                     embed_time=128, num_heads=num_heads, learn_emb=learn_emb, num_ref_points=configs.num_ref_points, patch_len=configs.patch_len, stride=configs.stride)
 
@@ -157,37 +143,23 @@ class Encoder_PCA(nn.Module):
         self.word_embedding = word_embedding.T
 
     def forward(self, x, time_steps):
-        print("x shape: ", x.shape) # (128, 2, 2500)
         B = x.shape[0]
         if self.word_embedding.ndim == 2:
             self.word_embedding = self.word_embedding.repeat(B, 1, 1)
         elif self.word_embedding.shape[0] != B:
             self.word_embedding = self.word_embedding[0].repeat(B, 1, 1)
 
-        # x = self.linear(x)
-        # print("x shape: ", x.shape) # (128, 2, 768)
-
-        # x = self.transformer_encoder(x.transpose(0, 1)).transpose(0, 1)
-        # print("x shape: ", x.shape) # (128, 2, 768)
-
         x = rearrange(x, 'b m l -> b l m')
-        print("x shape: ", x.shape)
 
         x = self.encoder(x, time_steps)
-        print("x shape after encoder", x.shape) # (batch, num_ref, embed)
 
         x_time = x
-        print("x_time shape: ", x_time.shape) # (128, 2, 768)
 
         q = x.transpose(0, 1)
-        print("q shape: ", q.shape) # (2, 128, 768)
         k = v = self.word_embedding.transpose(0, 1)
-        print("k shape: ", k.shape) # (18, 128, 768)
         x, w_ = self.cross_attention(q, k, v)
-        print("weights shape: ", w_.shape) # (128, 2, 18)
 
         x = x.transpose(0, 1)
-        print("x shape: ", x.shape) # (128, 2, 768)
 
         return x_time, x
 
@@ -219,7 +191,6 @@ class Model(nn.Module):
         self.gpt2 = get_peft_model(self.gpt2, peft_config)
 
         word_embedding = torch.tensor(torch.load(configs.word_embedding_path)).to(device=device)
-        print("word_embedding_path: ", configs.word_embedding_path)
 
         for i, (name, param) in enumerate(self.gpt2.named_parameters()):
             if 'ln' in name or 'wpe' in name or 'lora' in name:
@@ -241,8 +212,7 @@ class Model(nn.Module):
 
         self.patch_num = (configs.num_ref_points - configs.patch_len) // configs.stride + 2
 
-        # self.in_layer = Encoder_PCA(configs.seq_len, word_embedding, hidden_dim=configs.d_model)
-        self.in_layer = Encoder_PCA(input_dim=configs.dim, word_embedding=word_embedding, hidden_dim=configs.d_model,
+        self.in_layer = Encoder_PCA(input_dim=1, word_embedding=word_embedding, hidden_dim=configs.d_model,
                                     num_heads=configs.num_encoder_heads, device=device,
                                     num_ref_points=configs.num_ref_points,
                                     learn_emb=configs.learn_emb,
@@ -255,10 +225,7 @@ class Model(nn.Module):
         if self.task_name == 'long_term_forecast' or self.task_name == 'short_term_forecast':
             self.out_layer = nn.Linear(configs.d_model, configs.pred_len)
         elif self.task_name == 'classification_mTAN_encoder':
-            # if configs.classify_pertp:
-            #     self.out_layer = nn.Linear(configs.enc_in, configs.num_class)
-            # else:
-            self.out_layer = nn.Linear(configs.d_model * self.patch_num, configs.num_class)
+            self.out_layer = nn.Linear(configs.d_model * self.patch_num * configs.enc_in, configs.num_class)
         elif self.task_name == 'imputation':
             self.out_layer = nn.Linear(configs.d_model, configs.seq_len)
         elif self.task_name == 'anomaly_detection':
@@ -312,18 +279,21 @@ class Model(nn.Module):
     def classification(self, x, time_steps):
         B, L, M = x.shape
 
-        # print("x shape: ", x.shape) # (256, 2500, 2)
+        # treat each channel as separate sequence
+        n_vars = M // 2
+        values = x[:, :, :n_vars]
+        masks = x[:, :, n_vars:2*n_vars]
+        time_steps = time_steps.unsqueeze(1).expand(-1, n_vars, -1).reshape(B * n_vars, L)
+
+        x = torch.stack((values, masks), dim=-1) # (B, T, n_vars, 2)
+
+        x = x.permute(0, 2, 1, 3).reshape(B * n_vars, L, 2)
 
         x = rearrange(x, 'b l m -> b m l')
 
         outputs_time1, outputs_text1 = self.in_layer(x, time_steps)
-        print("outputs_time1 shape: ", outputs_time1.shape) # (128, 2, 768)
-        print("outputs_text1 shape: ", outputs_text1.shape) # (128, 2, 768)
-
         outputs_time, intermidiate_feat_time = self.gpt2(inputs_embeds=outputs_time1)
         outputs_text, intermidiate_feat_text = self.gpt2_text(inputs_embeds=outputs_text1)
-        print("outputs_time shape: ", outputs_time.shape) # (128, 2, 768)
-        print("outputs_text shape: ", outputs_text.shape) # (128, 2, 768)
 
         outputs_time += outputs_time1
         outputs_text += outputs_text1
@@ -333,16 +303,6 @@ class Model(nn.Module):
         intermidiate_feat_text = tuple(
             [self.text_proj[idx](feat) for idx, feat in enumerate(list(intermidiate_feat_text))])
 
-        print("outputs_time shape: ", outputs_time.shape) # (128, 2, 768)
-        print("outputs_text shape: ", outputs_text.shape) # (128, 2, 768)
-
-        # if self.configs.classify_pertp:
-        #     outputs_time = self.projection_layer(outputs_time) # (batch, channel, seq_len)
-        #     outputs_text = self.projection_layer(outputs_text)
-
-        #     outputs_time = outputs_time.permute(0, 2, 1) # (batch, seq_len, channel)
-        #     outputs_text = outputs_text.permute(0, 2, 1)
-        # else:
         outputs_time = outputs_time.reshape(B, -1)
         outputs_text = outputs_text.reshape(B, -1)
 
@@ -352,8 +312,6 @@ class Model(nn.Module):
             outputs_time = outputs_time.repeat(1, L, 1) # (batch, seq_len, hidden)
             outputs_text = outputs_text.repeat(1, L, 1)
 
-        print("outputs_time shape: ", outputs_time.shape) # (128, 1536)
-        print("outputs_text shape: ", outputs_text.shape) # (128, 1536)
         outputs_time = self.out_layer(outputs_time)
         outputs_text = self.out_layer(outputs_text)
 

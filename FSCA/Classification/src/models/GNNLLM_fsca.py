@@ -46,7 +46,6 @@ class GNNLLM_fsca(nn.Module):
         gpt2_config = GPT2Config.from_pretrained('gpt2')
         self.gpt2 = GPT2withGNN.from_pretrained('gpt2', config=gpt2_config, args=configs)
         self.gpt2.h = self.gpt2.h[:configs.gpt_layers]
-        print("gpt_layers:", configs.gpt_layers)
         
         for i, (name, param) in enumerate(self.gpt2.named_parameters()):
             if 'ln' in name or 'wpe' in name:
