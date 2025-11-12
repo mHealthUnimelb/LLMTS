@@ -10,7 +10,6 @@ import numpy as np
 import random
 from physionet import PhysioNet, get_data_min_max, variable_time_collate_fn2
 from sklearn import model_selection
-from person_activity import PersonActivity
 
 
 def normalize_masked_data(data, mask, att_min, att_max):
@@ -179,22 +178,16 @@ def balanced_batch_sampler(train_data, true_labels, batch_size, n_classes):
         for idx in batch_indices:
             upsampled_train_data.append(train_data[idx])
 
-        print("batch_indices: ", batch_indices)
-
     return upsampled_train_data
 
 
 def get_data(args, dataset, device, q=0.016, upsampling_batch=True, flag=1):
-    print("upsampling_batch", upsampling_batch)
-    print("args.classif", args.classif)
-    print("args seed", args.seed)
     if dataset == 'P12':
-        total_dataset = PhysioNet('data/physionet',
+        total_dataset = PhysioNet('../../../datasets/physionet',
                                   quantization=q,
                                   download=True,
                                   device=device)
-        PT_dict = np.load('./data/P12data/processed_data/PTdict_list.npy', allow_pickle=True)
-        # arr_outcomes = np.load('./datasets/P12data/processed_data/arr_outcomes.npy', allow_pickle=True)
+        PT_dict = np.load('../../../datasets/P12data/processed_data/PTdict_list.npy', allow_pickle=True)
 
         idx_train, idx_val, idx_test = np.load(args.data_split_path, allow_pickle=True)
     elif dataset == 'P19':
@@ -219,24 +212,15 @@ def get_data(args, dataset, device, q=0.016, upsampling_batch=True, flag=1):
         total_dataset = preprocess_PAM(PT_dict, arr_outcomes)
 
     elif dataset == 'MIMIC':
-        total_dataset = torch.load('./data/MIMIC/mimic_classification/processed/mimic.pt', map_location='cpu')
+        total_dataset = torch.load('../../../../../datasets/MIMIC/mimic_classification/processed/mimic.pt', map_location='cpu')
         total_dataset = [(record_id, tt, vals, mask, torch.tensor(label)) for
                          (record_id, tt, vals, mask, label) in total_dataset]
-
-    elif dataset == 'activity':
-        total_dataset = PersonActivity('datasets/activity/', n_samples = int(1e8), download=True, device = device)
-
-
-    print('len(total_dataset):', len(total_dataset))
-    print("total_dataset[0]:", total_dataset[0])
 
     global_tt = torch.unique(torch.cat([tpl[1] for tpl in total_dataset]), sorted=True)
 
     if dataset == 'P12':
         # get recorde_id from PTdict_list.npy
-        print("idx_train[0]", idx_train[0])
         train_record_ids = [PT_dict[i]['id'] for i in idx_train]
-        print("train_record_ids[0]", train_record_ids[0])
         val_record_ids = [PT_dict[i]['id'] for i in idx_val]
         test_record_ids = [PT_dict[i]['id'] for i in idx_test]
 
@@ -247,23 +231,15 @@ def get_data(args, dataset, device, q=0.016, upsampling_batch=True, flag=1):
         train_data = [record_dict[rid] for rid in train_record_ids]
         val_data = [record_dict[rid] for rid in val_record_ids]
         test_data = [record_dict[rid] for rid in test_record_ids]
-
-        print("train_data[0]:", train_data[0])
-        print("val_data[0]:", val_data[0])
-        print("test_data[0]:", test_data[0])
     elif dataset == 'MIMIC' or dataset == 'activity':
         seen_data, test_data = model_selection.train_test_split(total_dataset, train_size=0.8, random_state=args.seed,
                                                                 shuffle=True)
         train_data, val_data = model_selection.train_test_split(seen_data, train_size=0.75, random_state=args.seed,
                                                                 shuffle=False)
-        print("Dataset n_samples:", len(total_dataset), len(train_data), len(val_data), len(test_data))
     else:
         train_data = [total_dataset[i] for i in idx_train]
-        print("train_data[0]:", train_data[0])
         val_data = [total_dataset[i] for i in idx_val]
-        print("val_data[0]:", val_data[0])
         test_data = [total_dataset[i] for i in idx_test]
-        print("test_data[0]:", test_data[0])
 
     # tt: time steps, vals: observed values, mask: which values are observed
     record_id, tt, vals, mask, labels = train_data[0]
@@ -277,18 +253,12 @@ def get_data(args, dataset, device, q=0.016, upsampling_batch=True, flag=1):
 
     if flag:
         if args.classif:
-            print("train len:", len(train_data))
-            print("val len:", len(val_data))
-            print("test len:", len(test_data))
-
             if upsampling_batch:
                 train_data_upsamled = []
                 true_labels = np.array([float(x[4].item()) for x in train_data])
                 if dataset == 'P12' or dataset == 'P19' or dataset == 'eICU':  # 2 classes
                     idx_0 = np.where(true_labels == 0)[0]
-                    print("idx_0 length", len(idx_0))
                     idx_1 = np.where(true_labels == 1)[0]
-                    print("idx_1 length", len(idx_1))
                     # Method 1
                     # for _ in range(len(true_labels) // batch_size):
                     #     indices = random_sample(idx_0, idx_1, batch_size)
@@ -316,23 +286,16 @@ def get_data(args, dataset, device, q=0.016, upsampling_batch=True, flag=1):
                                                             data_max=data_max, global_tt=global_tt, ts_split="TEST")
                 train_data_combined = variable_time_collate_fn(train_data, args, device, classify=args.classif, data_min=data_min,
                                                             data_max=data_max, global_tt=global_tt, ts_split="TRAIN")
-                val_data_combined = variable_time_collate_fn(
-                    val_data, args, device, classify=args.classif, data_min=data_min, data_max=data_max, global_tt=global_tt, ts_split="VAL")
-            print(train_data_combined[1].sum(
-            ), val_data_combined[1].sum(), test_data_combined[1].sum())
-            print(train_data_combined[0].size(), train_data_combined[1].size(),
-                  val_data_combined[0].size(), val_data_combined[1].size(),
-                  test_data_combined[0].size(), test_data_combined[1].size())
+                # val_data_combined = variable_time_collate_fn(
+                #     val_data, args, device, classify=args.classif, data_min=data_min, data_max=data_max, global_tt=global_tt, ts_split="VAL")
 
             # convert the combined data (a tuple of data and labels) into TensorDatasets
             train_data_combined = TensorDataset(
                 train_data_combined[0], train_data_combined[1].long().squeeze())
-            val_data_combined = TensorDataset(
-                val_data_combined[0], val_data_combined[1].long().squeeze())
+            # val_data_combined = TensorDataset(
+            #     val_data_combined[0], val_data_combined[1].long().squeeze())
             test_data_combined = TensorDataset(
                 test_data_combined[0], test_data_combined[1].long().squeeze())
-
-            print(test_data_combined[0])
         else:
             # if not classification (e.g., regression/forecasting)
             train_data_combined = variable_time_collate_fn(
@@ -370,10 +333,10 @@ def get_data(args, dataset, device, q=0.016, upsampling_batch=True, flag=1):
                     "n_labels": 1}  # (optional) how many labels per sample are expected
     if args.classif:
         # if classification, also create and store a validation DataLoader
-        val_dataloader = DataLoader(
-            val_data_combined, batch_size=batch_size, shuffle=False)
+        # val_dataloader = DataLoader(
+        #     val_data_combined, batch_size=batch_size, shuffle=False)
         data_objects["val_data"] = val_data
-        data_objects["val_dataloader"] = val_dataloader
+        # data_objects["val_dataloader"] = val_dataloader
     return data_objects  # return all the prepared data and metadata as a dictionary
 
 
